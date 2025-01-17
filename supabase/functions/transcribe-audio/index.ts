@@ -23,8 +23,8 @@ serve(async (req) => {
       )
     }
 
-    // Créer un client Supabase
-    const supabaseClient = createClient(
+    // Créer un client Supabase avec la clé de service
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
@@ -52,15 +52,10 @@ serve(async (req) => {
     const { text: transcription } = await whisperResponse.json()
 
     // Stocker le fichier audio dans Supabase Storage
-    const userId = (await supabaseClient.auth.getUser(req.headers.get('Authorization')?.split(' ')[1] || '')).data.user?.id
-    if (!userId) {
-      throw new Error('Utilisateur non authentifié')
-    }
-
     const fileExt = audioFile.name.split('.').pop()
-    const filePath = `${userId}/${crypto.randomUUID()}.${fileExt}`
+    const filePath = `public/${crypto.randomUUID()}.${fileExt}`
 
-    const { data: storageData, error: storageError } = await supabaseClient.storage
+    const { data: storageData, error: storageError } = await supabaseAdmin.storage
       .from('audio')
       .upload(filePath, audioFile, {
         contentType: audioFile.type,
@@ -72,10 +67,9 @@ serve(async (req) => {
     }
 
     // Créer l'entrée dans audio_files
-    const { data: audioFileData, error: audioFileError } = await supabaseClient
+    const { data: audioFileData, error: audioFileError } = await supabaseAdmin
       .from('audio_files')
       .insert({
-        user_id: userId,
         filename: audioFile.name,
         file_path: filePath,
       })
@@ -87,7 +81,7 @@ serve(async (req) => {
     }
 
     // Créer l'entrée dans transcriptions
-    const { data: transcriptionData, error: transcriptionError } = await supabaseClient
+    const { data: transcriptionData, error: transcriptionError } = await supabaseAdmin
       .from('transcriptions')
       .insert({
         audio_file_id: audioFileData.id,

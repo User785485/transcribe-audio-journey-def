@@ -35,13 +35,8 @@ export function TranscriptionUploader() {
         });
       }, 500);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      
       const response = await fetch('https://vmqvlnkqpncanqfktnle.functions.supabase.co/transcribe-audio', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
         body: formData,
       });
 
