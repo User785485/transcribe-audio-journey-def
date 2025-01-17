@@ -21,6 +21,25 @@ serve(async (req) => {
       )
     }
 
+    // Créer un client Supabase avec la clé de service
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    // Récupérer l'ID de l'utilisateur à partir du token
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    )
+
+    if (userError || !user) {
+      console.error('User error:', userError)
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized', details: userError?.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
+
     const formData = await req.formData()
     const audioFile = formData.get('file')
     const language = formData.get('language') || 'fr'
@@ -37,12 +56,6 @@ serve(async (req) => {
       type: audioFile.type,
       size: audioFile.size
     })
-
-    // Créer un client Supabase avec la clé de service
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
 
     // Préparer le fichier pour l'API Whisper
     const whisperFormData = new FormData()
@@ -102,13 +115,14 @@ serve(async (req) => {
       throw storageError
     }
 
-    // Créer l'entrée dans audio_files
+    // Créer l'entrée dans audio_files avec l'ID de l'utilisateur
     console.log('Creating audio_files entry...')
     const { data: audioFileData, error: audioFileError } = await supabaseAdmin
       .from('audio_files')
       .insert({
         filename: audioFile.name,
         file_path: filePath,
+        user_id: user.id // Ajout de l'ID de l'utilisateur
       })
       .select()
       .single()
