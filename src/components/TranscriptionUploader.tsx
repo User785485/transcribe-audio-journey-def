@@ -4,6 +4,7 @@ import { Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
+import { supabase } from "@/integrations/supabase/client";
 
 const SUPPORTED_FORMATS = {
   'audio/flac': ['.flac'],
@@ -143,21 +144,18 @@ export function TranscriptionUploader() {
       }, 500);
 
       console.log('Sending request to transcribe audio...');
-      const response = await fetch('https://vmqvlnkqpncanqfktnle.functions.supabase.co/transcribe-audio', {
-        method: 'POST',
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
         body: formData,
       });
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Transcription error:', errorData);
-        throw new Error(errorData.details || errorData.error || 'Une erreur est survenue');
+      if (error) {
+        console.error('Transcription error:', error);
+        throw new Error(error.message || 'Une erreur est survenue');
       }
 
-      const data = await response.json();
       console.log('Transcription received:', data);
       setTranscription(data.data.transcription.transcription);
       
