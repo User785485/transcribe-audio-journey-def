@@ -13,10 +13,76 @@ const SUPPORTED_FORMATS = {
   'audio/ogg': ['.oga', '.ogg'],
   'audio/wav': ['.wav'],
   'audio/webm': ['.webm'],
-  'video/mp4': ['.mp4'], // Some MP4s contain audio only
+  'video/mp4': ['.mp4'],
+  'audio/opus': ['.opus'] // Ajout du support pour Opus
 };
 
 const FORMATS_LIST = Object.values(SUPPORTED_FORMATS).flat().join(', ');
+
+async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
+  // Créer un AudioContext
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  
+  // Convertir le blob en ArrayBuffer
+  const arrayBuffer = await opusBlob.arrayBuffer();
+  
+  // Décoder l'audio
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  
+  // Créer un OfflineAudioContext pour le rendu
+  const offlineAudioContext = new OfflineAudioContext({
+    numberOfChannels: audioBuffer.numberOfChannels,
+    length: audioBuffer.length,
+    sampleRate: 44100,
+  });
+  
+  // Créer une source et la connecter
+  const source = offlineAudioContext.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineAudioContext.destination);
+  
+  // Démarrer la source et effectuer le rendu
+  source.start();
+  const renderedBuffer = await offlineAudioContext.startRendering();
+  
+  // Convertir en MP3 avec Lame
+  const mp3encoder = new (window as any).lamejs.Mp3Encoder(
+    renderedBuffer.numberOfChannels,
+    renderedBuffer.sampleRate,
+    128
+  );
+  
+  // Préparer les données pour l'encodage
+  const samples = new Int16Array(renderedBuffer.length * renderedBuffer.numberOfChannels);
+  const leftChannel = renderedBuffer.getChannelData(0);
+  const rightChannel = renderedBuffer.numberOfChannels > 1 ? renderedBuffer.getChannelData(1) : leftChannel;
+  
+  // Convertir les échantillons en format Int16
+  for (let i = 0; i < renderedBuffer.length; i++) {
+    samples[i * 2] = leftChannel[i] * 32767;
+    samples[i * 2 + 1] = rightChannel[i] * 32767;
+  }
+  
+  // Encoder en MP3
+  const mp3Data = [];
+  const blockSize = 1152;
+  for (let i = 0; i < samples.length; i += blockSize * 2) {
+    const sampleChunk = samples.subarray(i, i + blockSize * 2);
+    const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
+    if (mp3buf.length > 0) {
+      mp3Data.push(mp3buf);
+    }
+  }
+  
+  // Finaliser l'encodage
+  const end = mp3encoder.flush();
+  if (end.length > 0) {
+    mp3Data.push(end);
+  }
+  
+  // Créer un nouveau Blob MP3
+  return new Blob(mp3Data, { type: 'audio/mpeg' });
+}
 
 export function TranscriptionUploader() {
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -35,8 +101,21 @@ export function TranscriptionUploader() {
     setUploadProgress(0);
 
     try {
+      // Convertir le fichier Opus en MP3 si nécessaire
+      let fileToUpload = file;
+      if (file.type === 'audio/opus') {
+        toast({
+          title: "Conversion en cours",
+          description: "Conversion du fichier Opus en MP3...",
+        });
+        const mp3Blob = await convertOpusToMp3(file);
+        fileToUpload = new File([mp3Blob], file.name.replace('.opus', '.mp3'), {
+          type: 'audio/mpeg'
+        });
+      }
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', fileToUpload);
       
       // Simuler la progression du téléchargement
       const progressInterval = setInterval(() => {
