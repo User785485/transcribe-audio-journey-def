@@ -2,11 +2,14 @@ import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Progress } from "@/components/ui/progress";
 
 export function TranscriptionUploader() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcription, setTranscription] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
   const { toast } = useToast();
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -15,16 +18,50 @@ export function TranscriptionUploader() {
 
     setIsTranscribing(true);
     setTranscription("");
+    setUploadProgress(0);
 
     try {
-      // Simulate transcription for now
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setTranscription("Ceci est un exemple de transcription...");
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Simuler la progression du téléchargement
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 500);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch('https://vmqvlnkqpncanqfktnle.functions.supabase.co/transcribe-audio', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: formData,
+      });
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+
+      const data = await response.json();
+      setTranscription(data.data.transcription.transcription);
+      
       toast({
         title: "Transcription terminée",
         description: "Le fichier a été transcrit avec succès.",
       });
     } catch (error) {
+      console.error('Erreur:', error);
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -32,6 +69,7 @@ export function TranscriptionUploader() {
       });
     } finally {
       setIsTranscribing(false);
+      setUploadProgress(0);
     }
   }, [toast]);
 
@@ -47,7 +85,9 @@ export function TranscriptionUploader() {
     <div className="max-w-3xl mx-auto p-6 space-y-8">
       <div
         {...getRootProps()}
-        className={`dropzone ${isDragActive ? 'active' : ''}`}
+        className={`border-2 border-dashed rounded-lg p-8 transition-colors ${
+          isDragActive ? 'border-primary bg-primary/10' : 'border-muted-foreground/25'
+        }`}
       >
         <input {...getInputProps()} />
         <div className="flex flex-col items-center gap-4">
@@ -65,10 +105,13 @@ export function TranscriptionUploader() {
         </div>
       </div>
 
-      {isTranscribing && (
-        <div className="flex items-center justify-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <p>Transcription en cours...</p>
+      {(isTranscribing || uploadProgress > 0) && (
+        <div className="space-y-4">
+          <Progress value={uploadProgress} className="w-full" />
+          <div className="flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <p>Transcription en cours...</p>
+          </div>
         </div>
       )}
 
