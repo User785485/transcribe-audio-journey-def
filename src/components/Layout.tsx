@@ -1,40 +1,8 @@
-import { useEffect } from "react";
-import { useNavigate, Link, Outlet } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { Link, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { History, Upload, Settings, LogOut } from "lucide-react";
+import { History, Upload, Settings } from "lucide-react";
 
 export function Layout() {
-  const navigate = useNavigate();
-  const { toast } = useToast();
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate('/login');
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        navigate('/login');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  const handleSignOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast({
-        variant: "destructive",
-        description: "Erreur lors de la déconnexion",
-      });
-    }
-  };
-
   return (
     <div className="flex h-screen">
       <aside className="w-64 border-r bg-background">
@@ -61,16 +29,6 @@ export function Layout() {
                 Paramètres
               </Button>
             </Link>
-          </div>
-          <div className="p-4 border-t">
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50"
-              onClick={handleSignOut}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Déconnexion
-            </Button>
           </div>
         </nav>
       </aside>
