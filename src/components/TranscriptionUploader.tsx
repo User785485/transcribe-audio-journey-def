@@ -134,18 +134,33 @@ export function TranscriptionUploader() {
         });
       }
 
-      // Calculer le nombre de chunks nécessaires
+      // Get file extension and MIME type
+      const fileExt = fileToUpload.name.split('.').pop()?.toLowerCase();
+      const mimeType = Object.entries(SUPPORTED_FORMATS).find(([, exts]) => 
+        exts.some(ext => ext.endsWith(fileExt || ''))
+      )?.[0];
+
+      if (!fileExt || !mimeType) {
+        throw new Error(`Format de fichier non supporté: ${fileExt}`);
+      }
+
+      // Calculate number of chunks needed
       const totalChunks = Math.ceil(fileToUpload.size / CHUNK_SIZE);
       let completeTranscription = '';
 
-      // Traiter chaque chunk
+      // Process each chunk
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, fileToUpload.size);
         const chunk = fileToUpload.slice(start, end);
         
+        // Create a new File with the correct MIME type for each chunk
+        const chunkFile = new File([chunk], `chunk-${i}-${fileToUpload.name}`, {
+          type: mimeType
+        });
+        
         const formData = new FormData();
-        formData.append('file', chunk);
+        formData.append('file', chunkFile);
         formData.append('chunkIndex', i.toString());
         formData.append('totalChunks', totalChunks.toString());
         
@@ -157,11 +172,14 @@ export function TranscriptionUploader() {
           } : p
         ));
 
+        console.log(`Sending chunk ${i + 1}/${totalChunks} with type ${mimeType}`);
+
         const { data, error } = await supabase.functions.invoke('transcribe-audio', {
           body: formData,
         });
 
         if (error) {
+          console.error('Error during transcription:', error);
           throw new Error(error.message || 'Une erreur est survenue');
         }
 

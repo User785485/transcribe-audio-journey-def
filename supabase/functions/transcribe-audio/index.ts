@@ -6,7 +6,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB in bytes (Whisper API limit)
+const SUPPORTED_FORMATS = {
+  'audio/flac': '.flac',
+  'audio/m4a': '.m4a',
+  'audio/mpeg': '.mp3',
+  'audio/ogg': '.ogg',
+  'audio/wav': '.wav',
+  'audio/webm': '.webm',
+  'video/mp4': '.mp4'
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -41,57 +49,25 @@ serve(async (req) => {
       totalChunks
     });
 
-    // Préparer le fichier pour l'API Whisper
+    // Validate file type
+    if (!Object.keys(SUPPORTED_FORMATS).includes(audioFile.type)) {
+      console.error('Unsupported MIME type:', audioFile.type);
+      throw new Error(`Format de fichier non supporté: ${audioFile.type}`);
+    }
+
+    // Prepare file for Whisper API
     const whisperFormData = new FormData();
-    
-    // S'assurer que le fichier a une extension valide pour Whisper
-    const validExtensions = ['.flac', '.m4a', '.mp3', '.mp4', '.mpeg', '.mpga', '.oga', '.ogg', '.wav', '.webm'];
-    let fileName = audioFile.name;
-    const fileExt = fileName.split('.').pop()?.toLowerCase();
-    
-    if (!fileExt || !validExtensions.includes(`.${fileExt}`)) {
-      console.error('Invalid file extension:', fileExt);
-      throw new Error(`Format de fichier non supporté: ${fileExt}`);
-    }
-
-    // Créer un nouveau fichier avec le type MIME correct
-    const mimeTypes: Record<string, string> = {
-      'flac': 'audio/flac',
-      'm4a': 'audio/mp4',
-      'mp3': 'audio/mpeg',
-      'mp4': 'audio/mp4',
-      'mpeg': 'audio/mpeg',
-      'mpga': 'audio/mpeg',
-      'oga': 'audio/ogg',
-      'ogg': 'audio/ogg',
-      'wav': 'audio/wav',
-      'webm': 'audio/webm'
-    };
-
-    const mimeType = mimeTypes[fileExt];
-    if (!mimeType) {
-      console.error('Unsupported MIME type for extension:', fileExt);
-      throw new Error(`Type MIME non supporté pour l'extension: ${fileExt}`);
-    }
-
-    const arrayBuffer = await audioFile.arrayBuffer();
-    const whisperFile = new File(
-      [arrayBuffer],
-      fileName,
-      { type: mimeType }
-    );
-
-    console.log('Prepared file for Whisper API:', {
-      name: whisperFile.name,
-      type: whisperFile.type,
-      size: whisperFile.size
-    });
-    
-    whisperFormData.append('file', whisperFile);
+    whisperFormData.append('file', audioFile);
     whisperFormData.append('model', 'whisper-1');
     whisperFormData.append('language', language);
 
-    // Appeler l'API Whisper
+    console.log('Calling Whisper API with file:', {
+      name: audioFile.name,
+      type: audioFile.type,
+      size: audioFile.size
+    });
+
+    // Call Whisper API
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
@@ -109,16 +85,15 @@ serve(async (req) => {
     const { text: transcription } = await whisperResponse.json();
     console.log('Transcription received:', transcription.substring(0, 100) + '...');
 
-    // Si c'est le dernier chunk, stocker le fichier et la transcription
+    // If it's the last chunk, store the file and transcription
     if (Number(chunkIndex) === Number(totalChunks) - 1) {
-      // Stocker le fichier audio dans Supabase Storage
-      const filePath = `public/${crypto.randomUUID()}.${fileExt}`;
+      const filePath = `public/${crypto.randomUUID()}${SUPPORTED_FORMATS[audioFile.type]}`;
 
       console.log('Uploading file to Storage...');
       const { data: storageData, error: storageError } = await supabaseAdmin.storage
         .from('audio')
         .upload(filePath, audioFile, {
-          contentType: mimeType,
+          contentType: audioFile.type,
           upsert: false
         });
 
@@ -127,7 +102,6 @@ serve(async (req) => {
         throw storageError;
       }
 
-      // Créer l'entrée dans audio_files
       console.log('Creating audio_files entry...');
       const { data: audioFileData, error: audioFileError } = await supabaseAdmin
         .from('audio_files')
@@ -143,7 +117,6 @@ serve(async (req) => {
         throw audioFileError;
       }
 
-      // Créer l'entrée dans transcriptions
       console.log('Creating transcription entry...');
       const { data: transcriptionData, error: transcriptionError } = await supabaseAdmin
         .from('transcriptions')
@@ -173,7 +146,7 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      // Retourner la transcription partielle
+      // Return partial transcription
       return new Response(
         JSON.stringify({
           success: true,
