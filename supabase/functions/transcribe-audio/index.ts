@@ -6,16 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SUPPORTED_FORMATS = {
-  'audio/flac': '.flac',
-  'audio/m4a': '.m4a',
-  'audio/mpeg': ['.mp3', '.mpeg', '.mpga'],
-  'audio/ogg': ['.oga', '.ogg'],
-  'audio/wav': '.wav',
-  'audio/webm': '.webm',
-  'video/mp4': '.mp4',
-  'audio/opus': '.opus'
-};
+const WHISPER_SUPPORTED_FORMATS = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -45,32 +36,16 @@ serve(async (req) => {
       totalChunks
     });
 
-    // Convert opus to mp3 if needed
-    let processedFile = audioFile;
-    let mimeType = audioFile.type;
+    // Get file extension from name
+    const fileExtension = audioFile.name.split('.').pop()?.toLowerCase();
+    console.log('File extension:', fileExtension);
 
-    // Determine correct MIME type based on file extension if type is missing
-    if (!mimeType || mimeType === 'application/octet-stream') {
-      const extension = audioFile.name.split('.').pop()?.toLowerCase();
-      const foundMimeType = Object.entries(SUPPORTED_FORMATS).find(([, exts]) => {
-        const extensions = Array.isArray(exts) ? exts : [exts];
-        return extensions.some(ext => ext.substring(1) === extension);
-      })?.[0];
-      
-      if (foundMimeType) {
-        mimeType = foundMimeType;
-        processedFile = new File([audioFile], audioFile.name, { type: foundMimeType });
-      }
-    }
-
-    // Validate file format
-    const isSupported = Object.keys(SUPPORTED_FORMATS).includes(mimeType);
-    if (!isSupported) {
-      console.error('Unsupported file format:', mimeType);
+    if (!fileExtension || !WHISPER_SUPPORTED_FORMATS.includes(fileExtension)) {
+      console.error('Unsupported file format:', fileExtension);
       return new Response(
         JSON.stringify({ 
           error: 'Format de fichier non supporté', 
-          details: `Le format ${mimeType || 'inconnu'} n'est pas supporté. Formats supportés: flac, m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm` 
+          details: `Le format ${fileExtension || 'inconnu'} n'est pas supporté. Formats supportés: ${WHISPER_SUPPORTED_FORMATS.join(', ')}` 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
@@ -78,14 +53,14 @@ serve(async (req) => {
 
     // Prepare file for Whisper API
     const whisperFormData = new FormData();
-    whisperFormData.append('file', processedFile);
+    whisperFormData.append('file', audioFile);
     whisperFormData.append('model', 'whisper-1');
     whisperFormData.append('language', language);
 
     console.log('Calling Whisper API with file:', {
-      name: processedFile.name,
-      type: processedFile.type,
-      size: processedFile.size
+      name: audioFile.name,
+      type: audioFile.type,
+      size: audioFile.size
     });
 
     // Call Whisper API
@@ -108,7 +83,7 @@ serve(async (req) => {
 
     // If it's the last chunk, store the file and transcription
     if (Number(chunkIndex) === Number(totalChunks) - 1) {
-      const filePath = `public/${crypto.randomUUID()}${SUPPORTED_FORMATS[mimeType]}`;
+      const filePath = `public/${crypto.randomUUID()}.${fileExtension}`;
 
       console.log('Uploading file to Storage...');
       const supabaseAdmin = createClient(
@@ -118,8 +93,8 @@ serve(async (req) => {
 
       const { data: storageData, error: storageError } = await supabaseAdmin.storage
         .from('audio')
-        .upload(filePath, processedFile, {
-          contentType: processedFile.type,
+        .upload(filePath, audioFile, {
+          contentType: audioFile.type,
           upsert: false
         });
 
@@ -132,7 +107,7 @@ serve(async (req) => {
       const { data: audioFileData, error: audioFileError } = await supabaseAdmin
         .from('audio_files')
         .insert({
-          filename: processedFile.name,
+          filename: audioFile.name,
           file_path: filePath
         })
         .select()
