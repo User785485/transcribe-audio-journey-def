@@ -22,14 +22,11 @@ const FORMATS_LIST = Object.values(SUPPORTED_FORMATS).flat().join(', ');
 async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
   console.log('Starting Opus to MP3 conversion...');
   
-  // Créer un AudioContext
   const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
   
-  // Convertir le blob en ArrayBuffer
   const arrayBuffer = await opusBlob.arrayBuffer();
   console.log('Opus file loaded into ArrayBuffer');
   
-  // Décoder l'audio
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
   console.log('Audio successfully decoded', {
     numberOfChannels: audioBuffer.numberOfChannels,
@@ -37,24 +34,20 @@ async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
     length: audioBuffer.length
   });
   
-  // Créer un OfflineAudioContext pour le rendu
   const offlineAudioContext = new OfflineAudioContext({
     numberOfChannels: audioBuffer.numberOfChannels,
     length: audioBuffer.length,
     sampleRate: 44100,
   });
   
-  // Créer une source et la connecter
   const source = offlineAudioContext.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(offlineAudioContext.destination);
   
-  // Démarrer la source et effectuer le rendu
   source.start();
   const renderedBuffer = await offlineAudioContext.startRendering();
   console.log('Audio rendered successfully');
   
-  // Convertir en WAV au lieu de MP3 car c'est plus fiable
   const numberOfChannels = renderedBuffer.numberOfChannels;
   const length = renderedBuffer.length;
   const sampleRate = renderedBuffer.sampleRate;
@@ -63,16 +56,13 @@ async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
   const blockAlign = numberOfChannels * (bitsPerSample / 8);
   const wavDataLength = length * numberOfChannels * (bitsPerSample / 8);
   
-  // Créer l'en-tête WAV
   const buffer = new ArrayBuffer(44 + wavDataLength);
   const view = new DataView(buffer);
   
-  // "RIFF" chunk descriptor
   writeString(view, 0, 'RIFF');
   view.setUint32(4, 36 + wavDataLength, true);
   writeString(view, 8, 'WAVE');
   
-  // "fmt " sub-chunk
   writeString(view, 12, 'fmt ');
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
@@ -82,11 +72,9 @@ async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitsPerSample, true);
   
-  // "data" sub-chunk
   writeString(view, 36, 'data');
   view.setUint32(40, wavDataLength, true);
   
-  // Write audio data
   const samples = new Float32Array(length * numberOfChannels);
   for (let channel = 0; channel < numberOfChannels; channel++) {
     const channelData = renderedBuffer.getChannelData(channel);
@@ -95,7 +83,6 @@ async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
     }
   }
   
-  // Convert to 16-bit PCM
   const offset = 44;
   for (let i = 0; i < samples.length; i++) {
     const s = Math.max(-1, Math.min(1, samples[i]));
@@ -130,7 +117,12 @@ export function TranscriptionUploader() {
     setUploadProgress(0);
 
     try {
-      // Convertir le fichier Opus en WAV si nécessaire
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error('Vous devez être connecté pour utiliser cette fonctionnalité');
+      }
+
       let fileToUpload = file;
       if (file.type === 'audio/opus') {
         toast({
@@ -147,7 +139,6 @@ export function TranscriptionUploader() {
       const formData = new FormData();
       formData.append('file', fileToUpload);
       
-      // Simuler la progression du téléchargement
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
@@ -158,14 +149,12 @@ export function TranscriptionUploader() {
         });
       }, 500);
 
-      const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtcXZsbmtxcG5jYW5xZmt0bmxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwOTkwMDgsImV4cCI6MjA1MjY3NTAwOH0.SWio32U3svOm8GWqm384GhAm9aFpR2mYhtGKgDzE_64';
-
       console.log('Sending request to transcribe audio...');
       const response = await fetch('https://vmqvlnkqpncanqfktnle.functions.supabase.co/transcribe-audio', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${ANON_KEY}`,
-          'apikey': ANON_KEY,
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': session.access_token,
         },
         body: formData,
       });
