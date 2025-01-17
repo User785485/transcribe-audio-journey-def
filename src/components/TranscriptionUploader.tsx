@@ -17,6 +17,9 @@ const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus']
 };
 
+// 25MB in bytes (Whisper API limit)
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
+
 async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
   console.log('Starting Opus to MP3 conversion...');
   
@@ -112,6 +115,16 @@ export function TranscriptionUploader() {
   const { toast } = useToast();
 
   const processFile = async (file: File) => {
+    // Check file size before processing
+    if (file.size > MAX_FILE_SIZE) {
+      toast({
+        variant: "destructive",
+        title: "Fichier trop volumineux",
+        description: `Le fichier ${file.name} dépasse la limite de 25 Mo autorisée par l'API de transcription.`,
+      });
+      return;
+    }
+
     const id = crypto.randomUUID();
     setTranscriptionProgress(prev => [...prev, {
       id,
