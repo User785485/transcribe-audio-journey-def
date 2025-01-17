@@ -17,7 +17,9 @@ const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus']
 };
 
-const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB in bytes (Whisper API limit)
+// Reduced to 24MB to account for potential overhead
+const CHUNK_SIZE = 24 * 1024 * 1024;
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB Whisper API limit
 
 async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
   console.log('Starting Opus to MP3 conversion...');
@@ -124,6 +126,12 @@ export function TranscriptionUploader() {
 
     try {
       let fileToUpload = file;
+      
+      // Check file size before processing
+      if (file.size > MAX_FILE_SIZE) {
+        throw new Error(`Le fichier est trop volumineux. La taille maximale est de ${Math.round(MAX_FILE_SIZE / (1024 * 1024))}MB`);
+      }
+
       if (file.type === 'audio/opus') {
         setTranscriptionProgress(prev => prev.map(p => 
           p.id === id ? { ...p, status: 'transcribing', progress: 10 } : p
@@ -158,6 +166,12 @@ export function TranscriptionUploader() {
         const chunkFile = new File([chunk], `chunk-${i}-${fileToUpload.name}`, {
           type: mimeType
         });
+
+        console.log(`Processing chunk ${i + 1}/${totalChunks}:`, {
+          size: chunkFile.size,
+          type: chunkFile.type,
+          name: chunkFile.name
+        });
         
         const formData = new FormData();
         formData.append('file', chunkFile);
@@ -171,8 +185,6 @@ export function TranscriptionUploader() {
             progress: Math.round((i + 1) / totalChunks * 100)
           } : p
         ));
-
-        console.log(`Sending chunk ${i + 1}/${totalChunks} with type ${mimeType}`);
 
         const { data, error } = await supabase.functions.invoke('transcribe-audio', {
           body: formData,
