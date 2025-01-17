@@ -25,12 +25,18 @@ serve(async (req) => {
     const audioFile = formData.get('file')
     const language = formData.get('language') || 'fr'
 
-    if (!audioFile) {
+    if (!audioFile || !(audioFile instanceof File)) {
       return new Response(
-        JSON.stringify({ error: 'Aucun fichier audio fourni' }),
+        JSON.stringify({ error: 'Aucun fichier audio fourni ou format invalide' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
+
+    console.log('Audio file received:', {
+      name: audioFile.name,
+      type: audioFile.type,
+      size: audioFile.size
+    })
 
     // Créer un client Supabase avec la clé de service
     const supabaseAdmin = createClient(
@@ -39,19 +45,35 @@ serve(async (req) => {
     )
 
     // Préparer le fichier pour l'API Whisper
-    const formDataForWhisper = new FormData()
-    formDataForWhisper.append('file', audioFile)
-    formDataForWhisper.append('model', 'whisper-1')
-    formDataForWhisper.append('language', language)
+    const whisperFormData = new FormData()
+    
+    // S'assurer que le fichier a une extension valide
+    let fileName = audioFile.name
+    if (!fileName.match(/\.(flac|m4a|mp3|mp4|mpeg|mpga|oga|ogg|wav|webm)$/i)) {
+      fileName += '.wav' // Ajouter l'extension .wav si aucune extension valide n'est présente
+    }
+    
+    const whisperFile = new File([await audioFile.arrayBuffer()], fileName, {
+      type: audioFile.type || 'audio/wav'
+    })
+    
+    whisperFormData.append('file', whisperFile)
+    whisperFormData.append('model', 'whisper-1')
+    whisperFormData.append('language', language)
 
-    console.log('Calling Whisper API...')
+    console.log('Calling Whisper API with file:', {
+      name: whisperFile.name,
+      type: whisperFile.type,
+      size: whisperFile.size
+    })
+
     // Appeler l'API Whisper
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
       },
-      body: formDataForWhisper,
+      body: whisperFormData,
     })
 
     if (!whisperResponse.ok) {
