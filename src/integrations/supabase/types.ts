@@ -9,7 +9,68 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      audio_files: {
+        Row: {
+          created_at: string
+          duration: number | null
+          file_path: string
+          filename: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration?: number | null
+          file_path: string
+          filename: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration?: number | null
+          file_path?: string
+          filename?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      transcriptions: {
+        Row: {
+          audio_file_id: string
+          created_at: string
+          id: string
+          language: string | null
+          status: string | null
+          transcription: string
+        }
+        Insert: {
+          audio_file_id: string
+          created_at?: string
+          id?: string
+          language?: string | null
+          status?: string | null
+          transcription: string
+        }
+        Update: {
+          audio_file_id?: string
+          created_at?: string
+          id?: string
+          language?: string | null
+          status?: string | null
+          transcription?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transcriptions_audio_file_id_fkey"
+            columns: ["audio_file_id"]
+            isOneToOne: false
+            referencedRelation: "audio_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
