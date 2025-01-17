@@ -9,8 +9,8 @@ const corsHeaders = {
 const SUPPORTED_FORMATS = {
   'audio/flac': '.flac',
   'audio/m4a': '.m4a',
-  'audio/mpeg': '.mp3',
-  'audio/ogg': '.ogg',
+  'audio/mpeg': ['.mp3', '.mpeg', '.mpga'],
+  'audio/ogg': ['.oga', '.ogg'],
   'audio/wav': '.wav',
   'audio/webm': '.webm',
   'video/mp4': '.mp4',
@@ -23,11 +23,6 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
     const formData = await req.formData();
     const audioFile = formData.get('file');
     const language = formData.get('language') || 'fr';
@@ -52,13 +47,33 @@ serve(async (req) => {
 
     // Convert opus to mp3 if needed
     let processedFile = audioFile;
-    if (audioFile.type === 'audio/opus') {
-      console.log('Converting opus file to mp3...');
-      // Create a new file with .mp3 extension
-      processedFile = new File([audioFile], audioFile.name.replace('.opus', '.mp3'), {
-        type: 'audio/mpeg'
-      });
-      console.log('Opus file converted to mp3');
+    let mimeType = audioFile.type;
+
+    // Determine correct MIME type based on file extension if type is missing
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      const extension = audioFile.name.split('.').pop()?.toLowerCase();
+      const foundMimeType = Object.entries(SUPPORTED_FORMATS).find(([, exts]) => {
+        const extensions = Array.isArray(exts) ? exts : [exts];
+        return extensions.some(ext => ext.substring(1) === extension);
+      })?.[0];
+      
+      if (foundMimeType) {
+        mimeType = foundMimeType;
+        processedFile = new File([audioFile], audioFile.name, { type: foundMimeType });
+      }
+    }
+
+    // Validate file format
+    const isSupported = Object.keys(SUPPORTED_FORMATS).includes(mimeType);
+    if (!isSupported) {
+      console.error('Unsupported file format:', mimeType);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Format de fichier non supporté', 
+          details: `Le format ${mimeType || 'inconnu'} n'est pas supporté. Formats supportés: flac, m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm` 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
 
     // Prepare file for Whisper API
@@ -93,9 +108,14 @@ serve(async (req) => {
 
     // If it's the last chunk, store the file and transcription
     if (Number(chunkIndex) === Number(totalChunks) - 1) {
-      const filePath = `public/${crypto.randomUUID()}${SUPPORTED_FORMATS[processedFile.type]}`;
+      const filePath = `public/${crypto.randomUUID()}${SUPPORTED_FORMATS[mimeType]}`;
 
       console.log('Uploading file to Storage...');
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
       const { data: storageData, error: storageError } = await supabaseAdmin.storage
         .from('audio')
         .upload(filePath, processedFile, {
