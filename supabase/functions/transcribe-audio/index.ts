@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB in bytes (Whisper API limit)
+const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB in bytes (Whisper API limit)
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -22,6 +22,8 @@ serve(async (req) => {
     const formData = await req.formData();
     const audioFile = formData.get('file');
     const language = formData.get('language') || 'fr';
+    const chunkIndex = formData.get('chunkIndex');
+    const totalChunks = formData.get('totalChunks');
 
     if (!audioFile || !(audioFile instanceof File)) {
       console.error('Invalid file:', audioFile);
@@ -31,29 +33,19 @@ serve(async (req) => {
       );
     }
 
-    // Check file size
-    if (audioFile.size > MAX_FILE_SIZE) {
-      console.error('File too large:', audioFile.size);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Fichier trop volumineux',
-          details: `La taille du fichier (${(audioFile.size / 1024 / 1024).toFixed(2)} Mo) dépasse la limite de 25 Mo.`
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
-    }
-
-    console.log('Audio file received:', {
+    console.log('Audio chunk received:', {
       name: audioFile.name,
       type: audioFile.type,
-      size: audioFile.size
+      size: audioFile.size,
+      chunkIndex,
+      totalChunks
     });
 
     // Préparer le fichier pour l'API Whisper
     const whisperFormData = new FormData();
     
     // S'assurer que le fichier a une extension valide pour Whisper
-    const validExtensions = ['.flac', '.m4a', '.mp3', '.mp4', '.mpeg', '.mpga', '.oga', '.ogg', '.wav', '.webm']
+    const validExtensions = ['.flac', '.m4a', '.mp3', '.mp4', '.mpeg', '.mpga', '.oga', '.ogg', '.wav', '.webm'];
     let fileName = audioFile.name;
     const fileExt = fileName.split('.').pop()?.toLowerCase();
     
@@ -74,7 +66,7 @@ serve(async (req) => {
       'ogg': 'audio/ogg',
       'wav': 'audio/wav',
       'webm': 'audio/webm'
-    }
+    };
 
     const whisperFile = new File(
       [await audioFile.arrayBuffer()],
@@ -110,67 +102,84 @@ serve(async (req) => {
     const { text: transcription } = await whisperResponse.json();
     console.log('Transcription received:', transcription.substring(0, 100) + '...');
 
-    // Stocker le fichier audio dans Supabase Storage
-    const filePath = `public/${crypto.randomUUID()}.${fileExt}`;
+    // Si c'est le dernier chunk, stocker le fichier et la transcription
+    if (Number(chunkIndex) === Number(totalChunks) - 1) {
+      // Stocker le fichier audio dans Supabase Storage
+      const filePath = `public/${crypto.randomUUID()}.${fileExt}`;
 
-    console.log('Uploading file to Storage...');
-    const { data: storageData, error: storageError } = await supabaseAdmin.storage
-      .from('audio')
-      .upload(filePath, audioFile, {
-        contentType: whisperFile.type,
-        upsert: false
-      });
+      console.log('Uploading file to Storage...');
+      const { data: storageData, error: storageError } = await supabaseAdmin.storage
+        .from('audio')
+        .upload(filePath, audioFile, {
+          contentType: whisperFile.type,
+          upsert: false
+        });
 
-    if (storageError) {
-      console.error('Storage error:', storageError);
-      throw storageError;
+      if (storageError) {
+        console.error('Storage error:', storageError);
+        throw storageError;
+      }
+
+      // Créer l'entrée dans audio_files
+      console.log('Creating audio_files entry...');
+      const { data: audioFileData, error: audioFileError } = await supabaseAdmin
+        .from('audio_files')
+        .insert({
+          filename: audioFile.name,
+          file_path: filePath
+        })
+        .select()
+        .single();
+
+      if (audioFileError) {
+        console.error('Audio files error:', audioFileError);
+        throw audioFileError;
+      }
+
+      // Créer l'entrée dans transcriptions
+      console.log('Creating transcription entry...');
+      const { data: transcriptionData, error: transcriptionError } = await supabaseAdmin
+        .from('transcriptions')
+        .insert({
+          audio_file_id: audioFileData.id,
+          transcription,
+          language,
+          status: 'completed'
+        })
+        .select()
+        .single();
+
+      if (transcriptionError) {
+        console.error('Transcription error:', transcriptionError);
+        throw transcriptionError;
+      }
+
+      console.log('All operations completed successfully');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            audioFile: audioFileData,
+            transcription: transcriptionData
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } else {
+      // Retourner la transcription partielle
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            transcription: {
+              transcription,
+              isPartial: true
+            }
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-
-    // Créer l'entrée dans audio_files
-    console.log('Creating audio_files entry...');
-    const { data: audioFileData, error: audioFileError } = await supabaseAdmin
-      .from('audio_files')
-      .insert({
-        filename: audioFile.name,
-        file_path: filePath
-      })
-      .select()
-      .single();
-
-    if (audioFileError) {
-      console.error('Audio files error:', audioFileError);
-      throw audioFileError;
-    }
-
-    // Créer l'entrée dans transcriptions
-    console.log('Creating transcription entry...');
-    const { data: transcriptionData, error: transcriptionError } = await supabaseAdmin
-      .from('transcriptions')
-      .insert({
-        audio_file_id: audioFileData.id,
-        transcription,
-        language,
-        status: 'completed'
-      })
-      .select()
-      .single();
-
-    if (transcriptionError) {
-      console.error('Transcription error:', transcriptionError);
-      throw transcriptionError;
-    }
-
-    console.log('All operations completed successfully');
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: {
-          audioFile: audioFileData,
-          transcription: transcriptionData
-        }
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
 
   } catch (error) {
     console.error('Error:', error);

@@ -17,8 +17,7 @@ const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus']
 };
 
-// 25MB in bytes (Whisper API limit)
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB in bytes (Whisper API limit)
 
 async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
   console.log('Starting Opus to MP3 conversion...');
@@ -115,16 +114,6 @@ export function TranscriptionUploader() {
   const { toast } = useToast();
 
   const processFile = async (file: File) => {
-    // Check file size before processing
-    if (file.size > MAX_FILE_SIZE) {
-      toast({
-        variant: "destructive",
-        title: "Fichier trop volumineux",
-        description: `Le fichier ${file.name} dépasse la limite de 25 Mo autorisée par l'API de transcription.`,
-      });
-      return;
-    }
-
     const id = crypto.randomUUID();
     setTranscriptionProgress(prev => [...prev, {
       id,
@@ -145,19 +134,42 @@ export function TranscriptionUploader() {
         });
       }
 
-      const formData = new FormData();
-      formData.append('file', fileToUpload);
-      
-      setTranscriptionProgress(prev => prev.map(p => 
-        p.id === id ? { ...p, status: 'transcribing', progress: 30 } : p
-      ));
+      // Calculer le nombre de chunks nécessaires
+      const totalChunks = Math.ceil(fileToUpload.size / CHUNK_SIZE);
+      let completeTranscription = '';
 
-      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
-        body: formData,
-      });
+      // Traiter chaque chunk
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, fileToUpload.size);
+        const chunk = fileToUpload.slice(start, end);
+        
+        const formData = new FormData();
+        formData.append('file', chunk);
+        formData.append('chunkIndex', i.toString());
+        formData.append('totalChunks', totalChunks.toString());
+        
+        setTranscriptionProgress(prev => prev.map(p => 
+          p.id === id ? {
+            ...p,
+            status: 'transcribing',
+            progress: Math.round((i + 1) / totalChunks * 100)
+          } : p
+        ));
 
-      if (error) {
-        throw new Error(error.message || 'Une erreur est survenue');
+        const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+          body: formData,
+        });
+
+        if (error) {
+          throw new Error(error.message || 'Une erreur est survenue');
+        }
+
+        if (data.data.transcription.isPartial) {
+          completeTranscription += ' ' + data.data.transcription.transcription;
+        } else {
+          completeTranscription = data.data.transcription.transcription;
+        }
       }
 
       setTranscriptionProgress(prev => prev.map(p => 
@@ -165,7 +177,7 @@ export function TranscriptionUploader() {
           ...p,
           status: 'completed',
           progress: 100,
-          transcription: data.data.transcription.transcription
+          transcription: completeTranscription.trim()
         } : p
       ));
       
