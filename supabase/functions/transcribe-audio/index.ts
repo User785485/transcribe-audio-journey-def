@@ -55,9 +55,9 @@ serve(async (req) => {
     }
 
     // Créer un nouveau fichier avec le type MIME correct
-    const mimeTypes = {
+    const mimeTypes: Record<string, string> = {
       'flac': 'audio/flac',
-      'm4a': 'audio/m4a',
+      'm4a': 'audio/mp4',
       'mp3': 'audio/mpeg',
       'mp4': 'audio/mp4',
       'mpeg': 'audio/mpeg',
@@ -68,21 +68,28 @@ serve(async (req) => {
       'webm': 'audio/webm'
     };
 
-    const whisperFile = new File(
-      [await audioFile.arrayBuffer()],
-      fileName,
-      { type: mimeTypes[fileExt] || audioFile.type }
-    );
-    
-    whisperFormData.append('file', whisperFile);
-    whisperFormData.append('model', 'whisper-1');
-    whisperFormData.append('language', language);
+    const mimeType = mimeTypes[fileExt];
+    if (!mimeType) {
+      console.error('Unsupported MIME type for extension:', fileExt);
+      throw new Error(`Type MIME non supporté pour l'extension: ${fileExt}`);
+    }
 
-    console.log('Calling Whisper API with file:', {
+    const arrayBuffer = await audioFile.arrayBuffer();
+    const whisperFile = new File(
+      [arrayBuffer],
+      fileName,
+      { type: mimeType }
+    );
+
+    console.log('Prepared file for Whisper API:', {
       name: whisperFile.name,
       type: whisperFile.type,
       size: whisperFile.size
     });
+    
+    whisperFormData.append('file', whisperFile);
+    whisperFormData.append('model', 'whisper-1');
+    whisperFormData.append('language', language);
 
     // Appeler l'API Whisper
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -111,7 +118,7 @@ serve(async (req) => {
       const { data: storageData, error: storageError } = await supabaseAdmin.storage
         .from('audio')
         .upload(filePath, audioFile, {
-          contentType: whisperFile.type,
+          contentType: mimeType,
           upsert: false
         });
 
