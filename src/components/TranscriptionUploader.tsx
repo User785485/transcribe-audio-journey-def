@@ -152,54 +152,24 @@ export function TranscriptionUploader() {
         throw new Error(`Format de fichier non supporté: ${fileExt}`);
       }
 
-      // Calculate number of chunks needed
-      const totalChunks = Math.ceil(fileToUpload.size / CHUNK_SIZE);
-      let completeTranscription = '';
+      setTranscriptionProgress(prev => prev.map(p => 
+        p.id === id ? {
+          ...p,
+          status: 'transcribing',
+          progress: 50
+        } : p
+      ));
 
-      // Process each chunk
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, fileToUpload.size);
-        const chunk = fileToUpload.slice(start, end);
-        
-        // Create a new File with the correct MIME type for each chunk
-        const chunkFile = new File([chunk], `chunk-${i}-${fileToUpload.name}`, {
-          type: mimeType
-        });
+      const formData = new FormData();
+      formData.append('file', fileToUpload);
+      
+      const { data, error } = await supabase.functions.invoke('transcribe-simple', {
+        body: formData,
+      });
 
-        console.log(`Processing chunk ${i + 1}/${totalChunks}:`, {
-          size: chunkFile.size,
-          type: chunkFile.type,
-          name: chunkFile.name
-        });
-        
-        const formData = new FormData();
-        formData.append('file', chunkFile);
-        formData.append('chunkIndex', i.toString());
-        formData.append('totalChunks', totalChunks.toString());
-        
-        setTranscriptionProgress(prev => prev.map(p => 
-          p.id === id ? {
-            ...p,
-            status: 'transcribing',
-            progress: Math.round((i + 1) / totalChunks * 100)
-          } : p
-        ));
-
-        const { data, error } = await supabase.functions.invoke('transcribe-audio', {
-          body: formData,
-        });
-
-        if (error) {
-          console.error('Error during transcription:', error);
-          throw new Error(error.message || 'Une erreur est survenue');
-        }
-
-        if (data.data.transcription.isPartial) {
-          completeTranscription += ' ' + data.data.transcription.transcription;
-        } else {
-          completeTranscription = data.data.transcription.transcription;
-        }
+      if (error) {
+        console.error('Error during transcription:', error);
+        throw new Error(error.message || 'Une erreur est survenue');
       }
 
       setTranscriptionProgress(prev => prev.map(p => 
@@ -207,7 +177,7 @@ export function TranscriptionUploader() {
           ...p,
           status: 'completed',
           progress: 100,
-          transcription: completeTranscription.trim()
+          transcription: data.data.transcription.transcription
         } : p
       ));
       
