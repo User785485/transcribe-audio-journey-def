@@ -7,11 +7,20 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'No authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      )
+    }
+
     const formData = await req.formData()
     const audioFile = formData.get('file')
     const language = formData.get('language') || 'fr'
@@ -35,6 +44,7 @@ serve(async (req) => {
     formDataForWhisper.append('model', 'whisper-1')
     formDataForWhisper.append('language', language)
 
+    console.log('Calling Whisper API...')
     // Appeler l'API Whisper
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
@@ -46,15 +56,18 @@ serve(async (req) => {
 
     if (!whisperResponse.ok) {
       const error = await whisperResponse.text()
+      console.error('Whisper API error:', error)
       throw new Error(`Erreur Whisper API: ${error}`)
     }
 
     const { text: transcription } = await whisperResponse.json()
+    console.log('Transcription received:', transcription.substring(0, 100) + '...')
 
     // Stocker le fichier audio dans Supabase Storage
     const fileExt = audioFile.name.split('.').pop()
     const filePath = `public/${crypto.randomUUID()}.${fileExt}`
 
+    console.log('Uploading file to Storage...')
     const { data: storageData, error: storageError } = await supabaseAdmin.storage
       .from('audio')
       .upload(filePath, audioFile, {
@@ -63,10 +76,12 @@ serve(async (req) => {
       })
 
     if (storageError) {
+      console.error('Storage error:', storageError)
       throw storageError
     }
 
     // Créer l'entrée dans audio_files
+    console.log('Creating audio_files entry...')
     const { data: audioFileData, error: audioFileError } = await supabaseAdmin
       .from('audio_files')
       .insert({
@@ -77,10 +92,12 @@ serve(async (req) => {
       .single()
 
     if (audioFileError) {
+      console.error('Audio files error:', audioFileError)
       throw audioFileError
     }
 
     // Créer l'entrée dans transcriptions
+    console.log('Creating transcription entry...')
     const { data: transcriptionData, error: transcriptionError } = await supabaseAdmin
       .from('transcriptions')
       .insert({
@@ -93,9 +110,11 @@ serve(async (req) => {
       .single()
 
     if (transcriptionError) {
+      console.error('Transcription error:', transcriptionError)
       throw transcriptionError
     }
 
+    console.log('All operations completed successfully')
     return new Response(
       JSON.stringify({
         success: true,
@@ -108,7 +127,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Erreur:', error)
+    console.error('Error:', error)
     return new Response(
       JSON.stringify({
         error: 'Une erreur est survenue lors de la transcription',
