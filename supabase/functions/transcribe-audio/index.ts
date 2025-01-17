@@ -7,38 +7,16 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'No authorization header' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      )
-    }
-
     // Créer un client Supabase avec la clé de service
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-
-    // Récupérer l'ID de l'utilisateur à partir du token
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
-
-    if (userError || !user) {
-      console.error('User error:', userError)
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized', details: userError?.message }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      )
-    }
 
     const formData = await req.formData()
     const audioFile = formData.get('file')
@@ -63,7 +41,7 @@ serve(async (req) => {
     // S'assurer que le fichier a une extension valide
     let fileName = audioFile.name
     if (!fileName.match(/\.(flac|m4a|mp3|mp4|mpeg|mpga|oga|ogg|wav|webm)$/i)) {
-      fileName += '.wav' // Ajouter l'extension .wav si aucune extension valide n'est présente
+      fileName += '.wav'
     }
     
     const whisperFile = new File([await audioFile.arrayBuffer()], fileName, {
@@ -115,14 +93,13 @@ serve(async (req) => {
       throw storageError
     }
 
-    // Créer l'entrée dans audio_files avec l'ID de l'utilisateur
+    // Créer l'entrée dans audio_files sans user_id
     console.log('Creating audio_files entry...')
     const { data: audioFileData, error: audioFileError } = await supabaseAdmin
       .from('audio_files')
       .insert({
         filename: audioFile.name,
-        file_path: filePath,
-        user_id: user.id // Ajout de l'ID de l'utilisateur
+        file_path: filePath
       })
       .select()
       .single()

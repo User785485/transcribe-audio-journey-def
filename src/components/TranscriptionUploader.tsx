@@ -3,7 +3,6 @@ import { useDropzone } from "react-dropzone";
 import { Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
 
 const SUPPORTED_FORMATS = {
@@ -117,12 +116,6 @@ export function TranscriptionUploader() {
     setUploadProgress(0);
 
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
-        throw new Error('Vous devez être connecté pour utiliser cette fonctionnalité');
-      }
-
       let fileToUpload = file;
       if (file.type === 'audio/opus') {
         toast({
@@ -152,10 +145,6 @@ export function TranscriptionUploader() {
       console.log('Sending request to transcribe audio...');
       const response = await fetch('https://vmqvlnkqpncanqfktnle.functions.supabase.co/transcribe-audio', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': session.access_token,
-        },
         body: formData,
       });
 
