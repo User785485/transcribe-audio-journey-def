@@ -14,13 +14,13 @@ export function Layout() {
             <Link to="/dashboard">
               <Button variant="ghost" className="w-full justify-start">
                 <Upload className="mr-2 h-4 w-4" />
-                Nouvelle transcription (<25MB)
+                Nouvelle transcription (&lt;25MB)
               </Button>
             </Link>
             <Link to="/split">
               <Button variant="ghost" className="w-full justify-start">
                 <Scissors className="mr-2 h-4 w-4" />
-                Découper et transcrire (>25MB)
+                Découper et transcrire (&gt;25MB)
               </Button>
             </Link>
             <Link to="/history">
