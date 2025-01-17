@@ -100,87 +100,102 @@ function writeString(view: DataView, offset: number, string: string) {
   }
 }
 
+interface TranscriptionProgress {
+  id: string;
+  filename: string;
+  progress: number;
+  status: 'pending' | 'transcribing' | 'completed' | 'error';
+  transcription?: string;
+  error?: string;
+}
+
 export function TranscriptionUploader() {
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [transcription, setTranscription] = useState("");
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress[]>([]);
   const { toast } = useToast();
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
-    if (!file) return;
-
-    console.log('File type:', file.type);
-    
-    setIsTranscribing(true);
-    setTranscription("");
-    setUploadProgress(0);
+  const processFile = async (file: File) => {
+    const id = crypto.randomUUID();
+    setTranscriptionProgress(prev => [...prev, {
+      id,
+      filename: file.name,
+      progress: 0,
+      status: 'pending'
+    }]);
 
     try {
       let fileToUpload = file;
       if (file.type === 'audio/opus') {
-        toast({
-          title: "Conversion en cours",
-          description: "Conversion du fichier Opus en WAV...",
-        });
+        setTranscriptionProgress(prev => prev.map(p => 
+          p.id === id ? { ...p, status: 'transcribing', progress: 10 } : p
+        ));
         const wavBlob = await convertOpusToMp3(file);
         fileToUpload = new File([wavBlob], file.name.replace('.opus', '.wav'), {
           type: 'audio/wav'
         });
-        console.log('Conversion completed, new file:', fileToUpload);
       }
 
       const formData = new FormData();
       formData.append('file', fileToUpload);
       
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return prev;
-          }
-          return prev + 10;
-        });
-      }, 500);
+      setTranscriptionProgress(prev => prev.map(p => 
+        p.id === id ? { ...p, status: 'transcribing', progress: 30 } : p
+      ));
 
-      console.log('Sending request to transcribe audio...');
       const { data, error } = await supabase.functions.invoke('transcribe-audio', {
         body: formData,
       });
 
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
       if (error) {
-        console.error('Transcription error:', error);
         throw new Error(error.message || 'Une erreur est survenue');
       }
 
-      console.log('Transcription received:', data);
-      setTranscription(data.data.transcription.transcription);
+      setTranscriptionProgress(prev => prev.map(p => 
+        p.id === id ? {
+          ...p,
+          status: 'completed',
+          progress: 100,
+          transcription: data.data.transcription.transcription
+        } : p
+      ));
       
       toast({
         title: "Transcription terminée",
-        description: "Le fichier a été transcrit avec succès.",
+        description: `Le fichier ${file.name} a été transcrit avec succès.`,
       });
     } catch (error) {
       console.error('Erreur:', error);
+      setTranscriptionProgress(prev => prev.map(p => 
+        p.id === id ? {
+          ...p,
+          status: 'error',
+          progress: 100,
+          error: error instanceof Error ? error.message : "Une erreur est survenue"
+        } : p
+      ));
+      
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Une erreur est survenue lors de la transcription.",
+        description: `Erreur lors de la transcription de ${file.name}: ${error instanceof Error ? error.message : "Une erreur est survenue"}`,
       });
-    } finally {
-      setIsTranscribing(false);
-      setUploadProgress(0);
     }
-  }, [toast]);
+  };
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    acceptedFiles.forEach(processFile);
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: SUPPORTED_FORMATS,
-    maxFiles: 1
   });
+
+  const handleCopyTranscription = (transcription: string) => {
+    navigator.clipboard.writeText(transcription);
+    toast({
+      description: "Transcription copiée dans le presse-papier",
+    });
+  };
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-8">
@@ -194,10 +209,10 @@ export function TranscriptionUploader() {
         <div className="flex flex-col items-center gap-4">
           <Upload className="w-12 h-12 text-muted-foreground" />
           {isDragActive ? (
-            <p className="text-lg">Déposez le fichier ici...</p>
+            <p className="text-lg">Déposez les fichiers ici...</p>
           ) : (
             <div className="space-y-2 text-center">
-              <p className="text-lg">Glissez-déposez un fichier audio, ou cliquez pour sélectionner</p>
+              <p className="text-lg">Glissez-déposez des fichiers audio, ou cliquez pour sélectionner</p>
               <p className="text-sm text-muted-foreground">
                 Formats supportés : {FORMATS_LIST}
               </p>
@@ -206,34 +221,44 @@ export function TranscriptionUploader() {
         </div>
       </div>
 
-      {(isTranscribing || uploadProgress > 0) && (
-        <div className="space-y-4">
-          <Progress value={uploadProgress} className="w-full" />
-          <div className="flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <p>Transcription en cours...</p>
+      {transcriptionProgress.map((item) => (
+        <div key={item.id} className="space-y-4 border rounded-lg p-4">
+          <div className="flex justify-between items-center">
+            <h3 className="font-medium">{item.filename}</h3>
+            <span className="text-sm text-muted-foreground">
+              {item.status === 'pending' && 'En attente...'}
+              {item.status === 'transcribing' && 'Transcription en cours...'}
+              {item.status === 'completed' && 'Terminé'}
+              {item.status === 'error' && 'Erreur'}
+            </span>
           </div>
-        </div>
-      )}
+          
+          <Progress value={item.progress} className="w-full" />
+          
+          {item.status === 'transcribing' && (
+            <div className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <p>Transcription en cours...</p>
+            </div>
+          )}
 
-      {transcription && (
-        <div className="rounded-lg border bg-card p-6">
-          <h3 className="font-semibold mb-4">Transcription</h3>
-          <p className="whitespace-pre-wrap">{transcription}</p>
-          <div className="mt-4">
-            <Button
-              onClick={() => {
-                navigator.clipboard.writeText(transcription);
-                toast({
-                  description: "Transcription copiée dans le presse-papier",
-                });
-              }}
-            >
-              Copier le texte
-            </Button>
-          </div>
+          {item.status === 'completed' && item.transcription && (
+            <div className="rounded-lg bg-card p-4">
+              <p className="whitespace-pre-wrap mb-4">{item.transcription}</p>
+              <Button
+                onClick={() => handleCopyTranscription(item.transcription!)}
+                size="sm"
+              >
+                Copier le texte
+              </Button>
+            </div>
+          )}
+
+          {item.status === 'error' && (
+            <p className="text-destructive">{item.error}</p>
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }
