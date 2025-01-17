@@ -247,6 +247,14 @@ export function TranscriptionUploader() {
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
+      <div className="text-center space-y-2">
+        <h2 className="text-2xl font-bold">Nouvelle transcription</h2>
+        <p className="text-muted-foreground">
+          Pour les fichiers de moins de 25MB uniquement. Pour les fichiers plus volumineux, 
+          utilisez la page "Découper et transcrire".
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {Array.from({ length: 9 }).map((_, index) => (
           <DropZone
