@@ -6,6 +6,18 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
 
+const SUPPORTED_FORMATS = {
+  'audio/flac': ['.flac'],
+  'audio/m4a': ['.m4a'],
+  'audio/mpeg': ['.mp3', '.mpeg', '.mpga'],
+  'audio/ogg': ['.oga', '.ogg'],
+  'audio/wav': ['.wav'],
+  'audio/webm': ['.webm'],
+  'video/mp4': ['.mp4'], // Some MP4s contain audio only
+};
+
+const FORMATS_LIST = Object.values(SUPPORTED_FORMATS).flat().join(', ');
+
 export function TranscriptionUploader() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcription, setTranscription] = useState("");
@@ -16,6 +28,8 @@ export function TranscriptionUploader() {
     const file = acceptedFiles[0];
     if (!file) return;
 
+    console.log('File type:', file.type);
+    
     setIsTranscribing(true);
     setTranscription("");
     setUploadProgress(0);
@@ -50,8 +64,8 @@ export function TranscriptionUploader() {
       setUploadProgress(100);
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+        const errorData = await response.json();
+        throw new Error(errorData.details || errorData.error || 'Une erreur est survenue');
       }
 
       const data = await response.json();
@@ -66,7 +80,7 @@ export function TranscriptionUploader() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Une erreur est survenue lors de la transcription.",
+        description: error instanceof Error ? error.message : "Une erreur est survenue lors de la transcription.",
       });
     } finally {
       setIsTranscribing(false);
@@ -76,9 +90,7 @@ export function TranscriptionUploader() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'audio/*': ['.mp3', '.wav', '.m4a', '.ogg']
-    },
+    accept: SUPPORTED_FORMATS,
     maxFiles: 1
   });
 
@@ -99,7 +111,7 @@ export function TranscriptionUploader() {
             <div className="space-y-2 text-center">
               <p className="text-lg">Glissez-déposez un fichier audio, ou cliquez pour sélectionner</p>
               <p className="text-sm text-muted-foreground">
-                MP3, WAV, M4A ou OGG
+                Formats supportés : {FORMATS_LIST}
               </p>
             </div>
           )}
