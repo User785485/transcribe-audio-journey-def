@@ -1,10 +1,10 @@
 import { useState, useCallback } from "react";
-import { useDropzone } from "react-dropzone";
-import { Upload, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
+import { DropZone } from "./DropZone";
 
 const SUPPORTED_FORMATS = {
   'audio/flac': ['.flac'],
@@ -16,8 +16,6 @@ const SUPPORTED_FORMATS = {
   'video/mp4': ['.mp4'],
   'audio/opus': ['.opus']
 };
-
-const FORMATS_LIST = Object.values(SUPPORTED_FORMATS).flat().join(', ');
 
 async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
   console.log('Starting Opus to MP3 conversion...');
@@ -181,14 +179,9 @@ export function TranscriptionUploader() {
     }
   };
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+  const handleDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach(processFile);
   }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: SUPPORTED_FORMATS,
-  });
 
   const handleCopyTranscription = (transcription: string) => {
     navigator.clipboard.writeText(transcription);
@@ -198,27 +191,16 @@ export function TranscriptionUploader() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-8">
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-8 transition-colors ${
-          isDragActive ? 'border-primary bg-primary/10' : 'border-muted-foreground/25'
-        }`}
-      >
-        <input {...getInputProps()} />
-        <div className="flex flex-col items-center gap-4">
-          <Upload className="w-12 h-12 text-muted-foreground" />
-          {isDragActive ? (
-            <p className="text-lg">Déposez les fichiers ici...</p>
-          ) : (
-            <div className="space-y-2 text-center">
-              <p className="text-lg">Glissez-déposez des fichiers audio, ou cliquez pour sélectionner</p>
-              <p className="text-sm text-muted-foreground">
-                Formats supportés : {FORMATS_LIST}
-              </p>
-            </div>
-          )}
-        </div>
+    <div className="max-w-6xl mx-auto p-6 space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 9 }).map((_, index) => (
+          <DropZone
+            key={index}
+            onDrop={handleDrop}
+            supportedFormats={SUPPORTED_FORMATS}
+            index={index}
+          />
+        ))}
       </div>
 
       {transcriptionProgress.map((item) => (
