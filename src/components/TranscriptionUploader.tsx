@@ -54,50 +54,63 @@ async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
   const renderedBuffer = await offlineAudioContext.startRendering();
   console.log('Audio rendered successfully');
   
-  // Convertir en MP3 avec Lame
-  const mp3encoder = new (window as any).lamejs.Mp3Encoder(
-    renderedBuffer.numberOfChannels,
-    renderedBuffer.sampleRate,
-    128
-  );
+  // Convertir en WAV au lieu de MP3 car c'est plus fiable
+  const numberOfChannels = renderedBuffer.numberOfChannels;
+  const length = renderedBuffer.length;
+  const sampleRate = renderedBuffer.sampleRate;
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * numberOfChannels * (bitsPerSample / 8);
+  const blockAlign = numberOfChannels * (bitsPerSample / 8);
+  const wavDataLength = length * numberOfChannels * (bitsPerSample / 8);
   
-  // Préparer les données pour l'encodage
-  const samples = new Int16Array(renderedBuffer.length * renderedBuffer.numberOfChannels);
-  const leftChannel = renderedBuffer.getChannelData(0);
-  const rightChannel = renderedBuffer.numberOfChannels > 1 ? renderedBuffer.getChannelData(1) : leftChannel;
+  // Créer l'en-tête WAV
+  const buffer = new ArrayBuffer(44 + wavDataLength);
+  const view = new DataView(buffer);
   
-  // Convertir les échantillons en format Int16
-  for (let i = 0; i < renderedBuffer.length; i++) {
-    samples[i * 2] = Math.max(-32768, Math.min(32767, Math.floor(leftChannel[i] * 32768)));
-    samples[i * 2 + 1] = Math.max(-32768, Math.min(32767, Math.floor(rightChannel[i] * 32768)));
-  }
+  // "RIFF" chunk descriptor
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + wavDataLength, true);
+  writeString(view, 8, 'WAVE');
   
-  console.log('Samples prepared for MP3 encoding');
+  // "fmt " sub-chunk
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numberOfChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
   
-  // Encoder en MP3
-  const mp3Data = [];
-  const blockSize = 1152; // Taille standard pour MP3
-  for (let i = 0; i < samples.length; i += blockSize * 2) {
-    const sampleChunk = samples.subarray(i, i + blockSize * 2);
-    const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
-    if (mp3buf.length > 0) {
-      mp3Data.push(mp3buf);
+  // "data" sub-chunk
+  writeString(view, 36, 'data');
+  view.setUint32(40, wavDataLength, true);
+  
+  // Write audio data
+  const samples = new Float32Array(length * numberOfChannels);
+  for (let channel = 0; channel < numberOfChannels; channel++) {
+    const channelData = renderedBuffer.getChannelData(channel);
+    for (let i = 0; i < length; i++) {
+      samples[i * numberOfChannels + channel] = channelData[i];
     }
   }
   
-  // Finaliser l'encodage
-  const end = mp3encoder.flush();
-  if (end.length > 0) {
-    mp3Data.push(end);
+  // Convert to 16-bit PCM
+  const offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
   
-  console.log('MP3 encoding completed');
+  console.log('WAV file created successfully');
   
-  // Créer un nouveau Blob MP3
-  const mp3Blob = new Blob(mp3Data, { type: 'audio/mpeg' });
-  console.log('MP3 blob created', { size: mp3Blob.size });
-  
-  return mp3Blob;
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+function writeString(view: DataView, offset: number, string: string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
 }
 
 export function TranscriptionUploader() {
@@ -117,16 +130,16 @@ export function TranscriptionUploader() {
     setUploadProgress(0);
 
     try {
-      // Convertir le fichier Opus en MP3 si nécessaire
+      // Convertir le fichier Opus en WAV si nécessaire
       let fileToUpload = file;
       if (file.type === 'audio/opus') {
         toast({
           title: "Conversion en cours",
-          description: "Conversion du fichier Opus en MP3...",
+          description: "Conversion du fichier Opus en WAV...",
         });
-        const mp3Blob = await convertOpusToMp3(file);
-        fileToUpload = new File([mp3Blob], file.name.replace('.opus', '.mp3'), {
-          type: 'audio/mpeg'
+        const wavBlob = await convertOpusToMp3(file);
+        fileToUpload = new File([wavBlob], file.name.replace('.opus', '.wav'), {
+          type: 'audio/wav'
         });
         console.log('Conversion completed, new file:', fileToUpload);
       }
