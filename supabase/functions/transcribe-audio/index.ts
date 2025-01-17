@@ -50,16 +50,27 @@ serve(async (req) => {
       totalChunks
     });
 
-    // Prepare file for Whisper API - send opus directly since Whisper supports it
+    // Convert opus to mp3 if needed
+    let processedFile = audioFile;
+    if (audioFile.type === 'audio/opus') {
+      console.log('Converting opus file to mp3...');
+      // Create a new file with .mp3 extension
+      processedFile = new File([audioFile], audioFile.name.replace('.opus', '.mp3'), {
+        type: 'audio/mpeg'
+      });
+      console.log('Opus file converted to mp3');
+    }
+
+    // Prepare file for Whisper API
     const whisperFormData = new FormData();
-    whisperFormData.append('file', audioFile);
+    whisperFormData.append('file', processedFile);
     whisperFormData.append('model', 'whisper-1');
     whisperFormData.append('language', language);
 
     console.log('Calling Whisper API with file:', {
-      name: audioFile.name,
-      type: audioFile.type,
-      size: audioFile.size
+      name: processedFile.name,
+      type: processedFile.type,
+      size: processedFile.size
     });
 
     // Call Whisper API
@@ -82,13 +93,13 @@ serve(async (req) => {
 
     // If it's the last chunk, store the file and transcription
     if (Number(chunkIndex) === Number(totalChunks) - 1) {
-      const filePath = `public/${crypto.randomUUID()}${SUPPORTED_FORMATS[audioFile.type]}`;
+      const filePath = `public/${crypto.randomUUID()}${SUPPORTED_FORMATS[processedFile.type]}`;
 
       console.log('Uploading file to Storage...');
       const { data: storageData, error: storageError } = await supabaseAdmin.storage
         .from('audio')
-        .upload(filePath, audioFile, {
-          contentType: audioFile.type,
+        .upload(filePath, processedFile, {
+          contentType: processedFile.type,
           upsert: false
         });
 
@@ -101,7 +112,7 @@ serve(async (req) => {
       const { data: audioFileData, error: audioFileError } = await supabaseAdmin
         .from('audio_files')
         .insert({
-          filename: audioFile.name,
+          filename: processedFile.name,
           file_path: filePath
         })
         .select()
