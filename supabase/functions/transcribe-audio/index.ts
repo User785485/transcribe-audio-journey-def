@@ -14,7 +14,7 @@ const SUPPORTED_FORMATS = {
   'audio/wav': '.wav',
   'audio/webm': '.webm',
   'video/mp4': '.mp4',
-  'audio/opus': '.opus'  // Added opus support
+  'audio/opus': '.opus'
 };
 
 serve(async (req) => {
@@ -50,64 +50,16 @@ serve(async (req) => {
       totalChunks
     });
 
-    // Convert opus to wav if needed
-    let processedFile = audioFile;
-    if (audioFile.type === 'audio/opus') {
-      console.log('Converting opus file to wav...');
-      const arrayBuffer = await audioFile.arrayBuffer();
-      const audioContext = new (globalThis.AudioContext || (globalThis as any).webkitAudioContext)();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
-      const wavBlob = await new Promise<Blob>((resolve) => {
-        const numberOfChannels = audioBuffer.numberOfChannels;
-        const length = audioBuffer.length;
-        const sampleRate = audioBuffer.sampleRate;
-        const wavBuffer = new ArrayBuffer(44 + length * 2);
-        const view = new DataView(wavBuffer);
-        
-        // Write WAV header
-        writeString(view, 0, 'RIFF');
-        view.setUint32(4, 36 + length * 2, true);
-        writeString(view, 8, 'WAVE');
-        writeString(view, 12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, numberOfChannels, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * 2, true);
-        view.setUint16(32, numberOfChannels * 2, true);
-        view.setUint16(34, 16, true);
-        writeString(view, 36, 'data');
-        view.setUint32(40, length * 2, true);
-        
-        // Write audio data
-        const channel = audioBuffer.getChannelData(0);
-        let offset = 44;
-        for (let i = 0; i < length; i++) {
-          const sample = Math.max(-1, Math.min(1, channel[i]));
-          view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-          offset += 2;
-        }
-        
-        resolve(new Blob([wavBuffer], { type: 'audio/wav' }));
-      });
-      
-      processedFile = new File([wavBlob], audioFile.name.replace('.opus', '.wav'), {
-        type: 'audio/wav'
-      });
-      console.log('Opus file converted to wav successfully');
-    }
-
-    // Prepare file for Whisper API
+    // Prepare file for Whisper API - send opus directly since Whisper supports it
     const whisperFormData = new FormData();
-    whisperFormData.append('file', processedFile);
+    whisperFormData.append('file', audioFile);
     whisperFormData.append('model', 'whisper-1');
     whisperFormData.append('language', language);
 
     console.log('Calling Whisper API with file:', {
-      name: processedFile.name,
-      type: processedFile.type,
-      size: processedFile.size
+      name: audioFile.name,
+      type: audioFile.type,
+      size: audioFile.size
     });
 
     // Call Whisper API
@@ -130,13 +82,13 @@ serve(async (req) => {
 
     // If it's the last chunk, store the file and transcription
     if (Number(chunkIndex) === Number(totalChunks) - 1) {
-      const filePath = `public/${crypto.randomUUID()}${SUPPORTED_FORMATS[processedFile.type]}`;
+      const filePath = `public/${crypto.randomUUID()}${SUPPORTED_FORMATS[audioFile.type]}`;
 
       console.log('Uploading file to Storage...');
       const { data: storageData, error: storageError } = await supabaseAdmin.storage
         .from('audio')
-        .upload(filePath, processedFile, {
-          contentType: processedFile.type,
+        .upload(filePath, audioFile, {
+          contentType: audioFile.type,
           upsert: false
         });
 
@@ -149,7 +101,7 @@ serve(async (req) => {
       const { data: audioFileData, error: audioFileError } = await supabaseAdmin
         .from('audio_files')
         .insert({
-          filename: processedFile.name,
+          filename: audioFile.name,
           file_path: filePath
         })
         .select()
@@ -218,9 +170,3 @@ serve(async (req) => {
     );
   }
 });
-
-function writeString(view: DataView, offset: number, string: string) {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
-}
