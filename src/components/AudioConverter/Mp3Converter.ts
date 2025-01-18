@@ -1,6 +1,5 @@
 import lamejs from 'lamejs';
 
-// Define MPEGMode constants
 const MPEGMode = {
   STEREO: 0,
   JOINT_STEREO: 1,
@@ -11,10 +10,13 @@ const MPEGMode = {
 export class Mp3Converter {
   private audioContext: AudioContext;
 
-  constructor() {
-    // Safe way to get AudioContext with proper TypeScript support
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    this.audioContext = new AudioContextClass();
+  constructor(audioContext?: AudioContext) {
+    if (audioContext) {
+      this.audioContext = audioContext;
+    } else {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioContext = new AudioContextClass();
+    }
   }
 
   async convertToMp3(audioFile: File): Promise<File> {
@@ -30,6 +32,10 @@ export class Mp3Converter {
     }
 
     try {
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume().catch(e => console.warn(e));
+      }
+
       const arrayBuffer = await audioFile.arrayBuffer();
       console.log('File loaded into ArrayBuffer');
 
@@ -88,19 +94,15 @@ export class Mp3Converter {
       totalChunks
     });
 
-    // Convert to PCM first
     const pcmData = new Int16Array(samples * channels);
     for (let channel = 0; channel < channels; channel++) {
       const channelData = audioBuffer.getChannelData(channel);
       for (let i = 0; i < samples; i++) {
         const index = i * channels + channel;
-        pcmData[index] = channelData[i] < 0 
-          ? channelData[i] * 0x8000 
-          : channelData[i] * 0x7FFF;
+        pcmData[index] = channelData[i] < 0 ? channelData[i] * 0x8000 : channelData[i] * 0x7FFF;
       }
     }
 
-    // Encode chunks
     for (let i = 0; i < samples; i += chunkSize) {
       const chunk = pcmData.subarray(i, i + chunkSize);
       const mp3buf = mp3encoder.encodeBuffer(chunk);
