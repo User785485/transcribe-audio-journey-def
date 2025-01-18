@@ -17,17 +17,19 @@ export class Mp3Converter {
         method: 'POST',
         body: formData,
         headers: {
-          // Add the authorization header with the anon key
           Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtcXZsbmtxcG5jYW5xZmt0bmxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwOTkwMDgsImV4cCI6MjA1MjY3NTAwOH0.SWio32U3svOm8GWqm384GhAm9aFpR2mYhtGKgDzE_64`
         }
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        // Clone the response before reading it as JSON
+        const errorResponse = response.clone();
+        const errorData = await errorResponse.json();
         console.error('Conversion service error:', errorData);
         throw new Error(`Erreur lors de la conversion: ${errorData.error || 'Erreur inconnue'}`);
       }
 
+      // Read the response JSON only once
       const data = await response.json();
       console.log('Conversion service response:', data);
 
