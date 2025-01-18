@@ -12,7 +12,9 @@ export class Mp3Converter {
   private audioContext: AudioContext;
 
   constructor() {
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    // Safe way to get AudioContext with proper TypeScript support
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    this.audioContext = new AudioContextClass();
   }
 
   async convertToMp3(audioFile: File): Promise<File> {
