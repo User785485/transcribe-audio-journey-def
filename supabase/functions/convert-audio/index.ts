@@ -48,8 +48,8 @@ serve(async (req) => {
 
     console.log('Generated paths:', { filePath, mp3Path })
 
-    // Upload original file
-    const { error: uploadError } = await supabase.storage
+    // Upload original file to get a URL
+    const { error: uploadError, data: uploadData } = await supabase.storage
       .from('audio')
       .upload(filePath, file)
 
@@ -65,93 +65,147 @@ serve(async (req) => {
       .from('audio')
       .getPublicUrl(filePath)
 
-    console.log('Starting ffmpeg conversion...')
+    console.log('Starting cloud conversion service request...')
 
-    try {
-      // Use ffmpeg to convert to MP3
-      const ffmpegCmd = new Deno.Command('ffmpeg', {
-        args: [
-          '-i', originalUrl,
-          '-codec:a', 'libmp3lame',
-          '-qscale:a', '2',
-          mp3Path
-        ]
-      })
+    // Use cloud conversion service (example with CloudConvert - you'll need to set up an account)
+    const cloudConvertApiKey = Deno.env.get('CLOUDCONVERT_API_KEY')
+    if (!cloudConvertApiKey) {
+      throw new Error('Cloud conversion service API key not configured')
+    }
 
-      const ffmpegResult = await ffmpegCmd.output()
-      
-      if (!ffmpegResult.success) {
-        console.error('FFmpeg conversion failed:', new TextDecoder().decode(ffmpegResult.stderr))
-        throw new Error('FFmpeg conversion failed')
-      }
-
-      console.log('FFmpeg conversion completed')
-
-      // Read the converted MP3 file
-      const mp3File = await Deno.readFile(mp3Path)
-
-      // Upload the MP3 to storage
-      const { error: mp3UploadError } = await supabase.storage
-        .from('audio')
-        .upload(mp3Path, mp3File, {
-          contentType: 'audio/mpeg'
-        })
-
-      if (mp3UploadError) {
-        console.error('Error uploading MP3:', mp3UploadError)
-        throw new Error('Failed to upload converted MP3')
-      }
-
-      console.log('MP3 file uploaded successfully')
-
-      // Get the MP3 URL
-      const { data: { publicUrl: mp3Url } } = supabase.storage
-        .from('audio')
-        .getPublicUrl(mp3Path)
-
-      // Save conversion record
-      const { error: dbError } = await supabase
-        .from('conversions')
-        .insert({
-          original_filename: safeOriginalName,
-          converted_filename: `${safeOriginalName.split('.')[0]}.mp3`,
-          original_format: fileExt,
-          converted_format: 'mp3',
-          file_path: mp3Path
-        })
-
-      if (dbError) {
-        console.error('Error saving conversion record:', dbError)
-        throw new Error('Failed to save conversion record')
-      }
-
-      console.log('Conversion record saved successfully')
-
-      // Clean up temporary files
-      try {
-        await Deno.remove(mp3Path)
-      } catch (error) {
-        console.error('Error cleaning up temp files:', error)
-      }
-
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          mp3Url,
-          message: 'File converted successfully'
-        }),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
+    // Create conversion job
+    const conversionResponse = await fetch('https://api.cloudconvert.com/v2/jobs', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cloudConvertApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        tasks: {
+          'import-1': {
+            operation: 'import/url',
+            url: originalUrl
+          },
+          'convert-1': {
+            operation: 'convert',
+            input: 'import-1',
+            output_format: 'mp3',
+            audio_bitrate: '192k'
+          },
+          'export-1': {
+            operation: 'export/url',
+            input: 'convert-1',
+            inline: false,
+            archive_multiple_files: false
           }
         }
-      )
+      })
+    })
 
-    } catch (error) {
-      console.error('FFmpeg error:', error)
-      throw new Error(`FFmpeg conversion failed: ${error.message}`)
+    if (!conversionResponse.ok) {
+      console.error('Cloud conversion service error:', await conversionResponse.text())
+      throw new Error('Failed to start conversion job')
     }
+
+    const conversionJob = await conversionResponse.json()
+    console.log('Conversion job created:', conversionJob)
+
+    // Wait for job completion
+    let mp3Url = null
+    let attempts = 0
+    const maxAttempts = 30
+    while (attempts < maxAttempts && !mp3Url) {
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      const jobStatusResponse = await fetch(`https://api.cloudconvert.com/v2/jobs/${conversionJob.data.id}`, {
+        headers: {
+          'Authorization': `Bearer ${cloudConvertApiKey}`
+        }
+      })
+      
+      if (!jobStatusResponse.ok) {
+        console.error('Error checking job status:', await jobStatusResponse.text())
+        continue
+      }
+
+      const jobStatus = await jobStatusResponse.json()
+      console.log('Job status:', jobStatus)
+
+      if (jobStatus.data.status === 'finished') {
+        const exportTask = jobStatus.data.tasks.find(task => task.operation === 'export/url')
+        if (exportTask && exportTask.result && exportTask.result.files) {
+          mp3Url = exportTask.result.files[0].url
+        }
+      } else if (jobStatus.data.status === 'error') {
+        throw new Error('Conversion job failed')
+      }
+
+      attempts++
+    }
+
+    if (!mp3Url) {
+      throw new Error('Conversion timeout or failed to get MP3 URL')
+    }
+
+    console.log('Conversion completed, downloading MP3...')
+
+    // Download the converted MP3
+    const mp3Response = await fetch(mp3Url)
+    if (!mp3Response.ok) {
+      throw new Error('Failed to download converted MP3')
+    }
+
+    const mp3Data = await mp3Response.blob()
+
+    // Upload the MP3 to storage
+    const { error: mp3UploadError } = await supabase.storage
+      .from('audio')
+      .upload(mp3Path, mp3Data, {
+        contentType: 'audio/mpeg'
+      })
+
+    if (mp3UploadError) {
+      console.error('Error uploading MP3:', mp3UploadError)
+      throw new Error('Failed to upload converted MP3')
+    }
+
+    console.log('MP3 file uploaded successfully')
+
+    // Get the MP3 URL
+    const { data: { publicUrl: finalMp3Url } } = supabase.storage
+      .from('audio')
+      .getPublicUrl(mp3Path)
+
+    // Save conversion record
+    const { error: dbError } = await supabase
+      .from('conversions')
+      .insert({
+        original_filename: safeOriginalName,
+        converted_filename: `${safeOriginalName.split('.')[0]}.mp3`,
+        original_format: fileExt,
+        converted_format: 'mp3',
+        file_path: mp3Path
+      })
+
+    if (dbError) {
+      console.error('Error saving conversion record:', dbError)
+      throw new Error('Failed to save conversion record')
+    }
+
+    console.log('Conversion record saved successfully')
+
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        mp3Url: finalMp3Url,
+        message: 'File converted successfully'
+      }),
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        }
+      }
+    )
 
   } catch (error) {
     console.error('Conversion error:', error)
