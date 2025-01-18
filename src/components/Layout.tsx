@@ -1,6 +1,6 @@
 import { Link, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { History, Upload, Settings, Scissors } from "lucide-react";
+import { History, Upload, Settings, Scissors, FileAudio2 } from "lucide-react";
 
 export function Layout() {
   return (
@@ -17,10 +17,16 @@ export function Layout() {
                 Nouvelle transcription (&lt;25MB)
               </Button>
             </Link>
+            <Link to="/convert">
+              <Button variant="ghost" className="w-full justify-start">
+                <FileAudio2 className="mr-2 h-4 w-4" />
+                Convertir en MP3
+              </Button>
+            </Link>
             <Link to="/split">
               <Button variant="ghost" className="w-full justify-start">
                 <Scissors className="mr-2 h-4 w-4" />
-                Découper et transcrire (&gt;25MB)
+                Découper les fichiers
               </Button>
             </Link>
             <Link to="/history">
