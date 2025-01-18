@@ -1,12 +1,5 @@
 import lamejs from 'lamejs';
 
-const MPEGMode = {
-  STEREO: 0,
-  JOINT_STEREO: 1,
-  DUAL_CHANNEL: 2,
-  MONO: 3
-};
-
 export class Mp3Converter {
   private audioContext: AudioContext;
 
@@ -82,7 +75,7 @@ export class Mp3Converter {
       channels,
       sampleRate,
       128,
-      channels === 1 ? MPEGMode.MONO : MPEGMode.JOINT_STEREO
+      channels === 1 ? 3 : 1 // 3 = MONO, 1 = JOINT_STEREO
     );
 
     const mp3Data: Int8Array[] = [];
