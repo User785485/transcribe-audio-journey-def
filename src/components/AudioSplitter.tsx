@@ -2,8 +2,10 @@ import { useState, useCallback } from "react";
 import { DropZone } from "./DropZone";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ChunkProgress, TranscriptionProgress, SUPPORTED_FORMATS, MAX_CHUNK_SIZE, MAX_TRANSCRIPTION_SIZE } from "./AudioConverter/types";
+import { ChunkProgress, TranscriptionProgress, SUPPORTED_FORMATS, MAX_TRANSCRIPTION_SIZE } from "./AudioConverter/types";
 import { Mp3Converter } from "./AudioConverter/Mp3Converter";
+import { AudioAnalyzer } from "./AudioConverter/AudioAnalyzer";
+import { AudioChunker } from "./AudioConverter/AudioSplitter";
 import { ChunkDisplay } from "./AudioConverter/ChunkDisplay";
 import { TranscriptionDisplay } from "./AudioConverter/TranscriptionDisplay";
 
@@ -11,11 +13,13 @@ export function AudioSplitter() {
   const [splitProgress, setSplitProgress] = useState<ChunkProgress[]>([]);
   const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress[]>([]);
   const { toast } = useToast();
-  const mp3Converter = new Mp3Converter();
 
-  const splitFile = async (file: File) => {
+  const mp3Converter = new Mp3Converter();
+  const audioAnalyzer = new AudioAnalyzer();
+  const audioChunker = new AudioChunker();
+
+  const processFile = async (file: File) => {
     const id = crypto.randomUUID();
-    const chunks: { number: number; size: number; blob: Blob }[] = [];
     
     setSplitProgress(prev => [...prev, {
       id,
@@ -25,27 +29,23 @@ export function AudioSplitter() {
     }]);
 
     try {
-      // Convert to MP3 first if needed
-      const mp3File = await mp3Converter.convertToMp3(file);
-      const totalChunks = Math.ceil(mp3File.size / MAX_CHUNK_SIZE);
-      
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * MAX_CHUNK_SIZE;
-        const end = Math.min(start + MAX_CHUNK_SIZE, mp3File.size);
-        const chunk = mp3File.slice(start, end, mp3File.type);
-        
-        const chunkBlob = new Blob([chunk], { type: 'audio/mpeg' });
-        chunks.push({
-          number: i + 1,
-          size: chunkBlob.size,
-          blob: chunkBlob
-        });
+      // Analyze file
+      const metadata = await audioAnalyzer.analyzeFile(file);
+      console.log('File metadata:', metadata);
 
-        console.log(`Created chunk ${i + 1}/${totalChunks}:`, {
-          size: chunkBlob.size,
-          type: chunkBlob.type
-        });
-      }
+      // Convert to MP3 if needed
+      const mp3File = metadata.needsConversion 
+        ? await mp3Converter.convertToMp3(file)
+        : file;
+
+      // Split into chunks
+      const rawChunks = await audioChunker.splitFile(mp3File);
+      
+      const chunks = rawChunks.map((blob, index) => ({
+        number: index + 1,
+        size: blob.size,
+        blob
+      }));
 
       setSplitProgress(prev => prev.map(p => 
         p.id === id ? {
@@ -60,7 +60,7 @@ export function AudioSplitter() {
         description: `Le fichier ${file.name} a été découpé en ${chunks.length} parties.`,
       });
     } catch (error) {
-      console.error('Erreur lors du découpage:', error);
+      console.error('Error processing file:', error);
       setSplitProgress(prev => prev.map(p => 
         p.id === id ? {
           ...p,
@@ -72,7 +72,7 @@ export function AudioSplitter() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: `Erreur lors du découpage de ${file.name}`,
+        description: `Erreur lors du traitement de ${file.name}: ${error instanceof Error ? error.message : "Une erreur est survenue"}`,
       });
     }
   };
@@ -110,12 +110,6 @@ export function AudioSplitter() {
           progress: 50
         } : p
       ));
-
-      console.log('Sending chunk to transcribe-chunks function:', {
-        filename: chunkFile.name,
-        type: chunkFile.type,
-        size: chunkFile.size
-      });
 
       const { data, error } = await supabase.functions.invoke('transcribe-chunks', {
         body: formData,
@@ -160,7 +154,7 @@ export function AudioSplitter() {
   const handleDrop = useCallback((files: File[]) => {
     files.forEach(file => {
       if (file.size > MAX_TRANSCRIPTION_SIZE) {
-        splitFile(file);
+        processFile(file);
       } else {
         toast({
           variant: "destructive",
@@ -170,21 +164,6 @@ export function AudioSplitter() {
       }
     });
   }, []);
-
-  const downloadChunk = (chunk: Blob, originalName: string, chunkNumber: number, totalChunks: number) => {
-    const extension = originalName.split('.').pop();
-    const nameWithoutExt = originalName.replace(`.${extension}`, '');
-    const newFileName = `${nameWithoutExt}_partie${chunkNumber}de${totalChunks}.${extension}`;
-    
-    const url = URL.createObjectURL(chunk);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = newFileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
@@ -208,7 +187,20 @@ export function AudioSplitter() {
         <ChunkDisplay
           key={item.id}
           item={item}
-          onDownloadChunk={downloadChunk}
+          onDownloadChunk={(chunk, originalName, chunkNumber, totalChunks) => {
+            const extension = originalName.split('.').pop();
+            const nameWithoutExt = originalName.replace(`.${extension}`, '');
+            const newFileName = `${nameWithoutExt}_partie${chunkNumber}de${totalChunks}.${extension}`;
+            
+            const url = URL.createObjectURL(chunk);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = newFileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }}
           onTranscribeChunk={processChunkForTranscription}
         />
       ))}

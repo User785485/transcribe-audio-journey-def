@@ -19,6 +19,13 @@ export interface TranscriptionProgress {
   error?: string;
 }
 
+export interface AudioMetadata {
+  duration?: number;
+  format: string;
+  size: number;
+  needsConversion: boolean;
+}
+
 export const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus'],
   'audio/ogg': ['.ogg'],
