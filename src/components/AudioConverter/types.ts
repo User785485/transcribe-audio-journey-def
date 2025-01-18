@@ -26,7 +26,7 @@ export interface AudioMetadata {
   needsConversion: boolean;
 }
 
-export const SUPPORTED_FORMATS = {
+export const SUPPORTED_FORMATS: Record<string, string[]> = {
   'audio/opus': ['.opus'],
   'audio/ogg': ['.ogg'],
   'audio/mpeg': ['.mp3'],
@@ -35,7 +35,7 @@ export const SUPPORTED_FORMATS = {
   'audio/wav': ['.wav'],
   'audio/webm': ['.webm'],
   'video/mp4': ['.mp4']
-} as Record<string, string[]>;
+};
 
 export type ConversionType = 'ogg-to-mp3' | 'opus-to-mp3' | 'other-to-mp3';
 
