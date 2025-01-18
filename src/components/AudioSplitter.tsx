@@ -14,6 +14,14 @@ declare global {
   }
 }
 
+// Add MPEGMode constants that lamejs needs
+const MPEGMode = {
+  STEREO: 0,
+  JOINT_STEREO: 1,
+  DUAL_CHANNEL: 2,
+  MONO: 3
+};
+
 const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus'],
   'audio/ogg': ['.ogg'],
@@ -113,8 +121,20 @@ export function AudioSplitter() {
         }
       }
 
-      console.log('Initializing MP3 encoder...');
-      const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+      console.log('Initializing MP3 encoder with config:', {
+        channels,
+        sampleRate,
+        mode: channels === 1 ? MPEGMode.MONO : MPEGMode.JOINT_STEREO,
+        bitRate: 128
+      });
+
+      const mp3encoder = new lamejs.Mp3Encoder(
+        channels,
+        sampleRate,
+        128,
+        channels === 1 ? MPEGMode.MONO : MPEGMode.JOINT_STEREO
+      );
+
       const mp3Data = [];
 
       // Encode to MP3 in chunks
@@ -135,7 +155,12 @@ export function AudioSplitter() {
         }
         
         if (i % (chunkSize * 100) === 0) {
-          console.log(`Encoding progress: ${Math.round((i / pcmData.length) * 100)}%`);
+          const progress = Math.round((i / pcmData.length) * 100);
+          console.log(`Encoding progress: ${progress}%`, {
+            currentChunk: Math.floor(i / chunkSize),
+            totalChunks,
+            bufferSize: mp3buf.length
+          });
         }
       }
 
@@ -147,6 +172,12 @@ export function AudioSplitter() {
 
       // Combine all MP3 chunks
       console.log('Creating MP3 blob...');
+      const totalSize = mp3Data.reduce((size, chunk) => size + chunk.length, 0);
+      console.log('Total MP3 size:', {
+        sizeBytes: totalSize,
+        sizeMB: (totalSize / (1024 * 1024)).toFixed(2)
+      });
+
       const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
       const convertedFile = new File([blob], audioFile.name.replace(/\.[^/.]+$/, '.mp3'), {
         type: 'audio/mpeg'
@@ -155,7 +186,8 @@ export function AudioSplitter() {
       console.log('Conversion completed successfully:', {
         newName: convertedFile.name,
         newType: convertedFile.type,
-        newSize: convertedFile.size
+        newSize: convertedFile.size,
+        compressionRatio: (convertedFile.size / audioFile.size).toFixed(2)
       });
 
       return convertedFile;
