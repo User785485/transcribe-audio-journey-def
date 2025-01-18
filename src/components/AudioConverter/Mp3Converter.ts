@@ -15,7 +15,11 @@ export class Mp3Converter {
       
       const response = await fetch('https://vmqvlnkqpncanqfktnle.supabase.co/functions/v1/convert-audio', {
         method: 'POST',
-        body: formData
+        body: formData,
+        headers: {
+          // Add the authorization header with the anon key
+          Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtcXZsbmtxcG5jYW5xZmt0bmxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwOTkwMDgsImV4cCI6MjA1MjY3NTAwOH0.SWio32U3svOm8GWqm384GhAm9aFpR2mYhtGKgDzE_64`
+        }
       });
 
       if (!response.ok) {
