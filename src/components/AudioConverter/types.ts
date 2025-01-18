@@ -1,4 +1,5 @@
 export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
+export const MAX_CHUNK_SIZE = 20 * 1024 * 1024; // 20MB
 
 export type ConversionType = 'ogg-to-mp3' | 'wav-to-mp3' | 'wma-to-mp3';
 
@@ -17,7 +18,19 @@ export const CONVERSION_TYPES: Record<ConversionType, { label: string; formats: 
   }
 };
 
-export const SUPPORTED_FORMATS = ['.mp3', '.wav', '.ogg', '.wma'];
+export const SUPPORTED_FORMATS: Record<string, string[]> = {
+  'audio/ogg': ['.ogg'],
+  'audio/mpeg': ['.mp3'],
+  'audio/wav': ['.wav'],
+  'audio/x-ms-wma': ['.wma']
+};
+
+export interface AudioMetadata {
+  duration?: number;
+  format: string;
+  size: number;
+  needsConversion: boolean;
+}
 
 export interface ChunkProgress {
   id: string;

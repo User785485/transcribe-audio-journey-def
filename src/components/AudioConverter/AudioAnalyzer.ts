@@ -49,7 +49,7 @@ export class AudioAnalyzer {
   private detectFormat(file: File): string {
     const extension = file.name.split('.').pop()?.toLowerCase();
     const mimeType = Object.entries(SUPPORTED_FORMATS).find(([, exts]) => 
-      exts.some(ext => ext.endsWith(extension || ''))
+      exts.includes(`.${extension}`)
     )?.[0];
 
     if (!extension || !mimeType) {
