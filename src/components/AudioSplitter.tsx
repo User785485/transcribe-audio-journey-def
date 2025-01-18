@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import lamejs from "lamejs";
 
 const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus'],
@@ -46,6 +47,80 @@ export function AudioSplitter() {
   const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress[]>([]);
   const { toast } = useToast();
 
+  const convertToMp3 = async (audioFile: File): Promise<File> => {
+    if (audioFile.type === 'audio/mpeg') {
+      return audioFile; // Already MP3
+    }
+
+    console.log('Converting file to MP3:', {
+      originalType: audioFile.type,
+      size: audioFile.size,
+      name: audioFile.name
+    });
+
+    try {
+      // Create AudioContext and decode the audio file
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const arrayBuffer = await audioFile.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      // Convert AudioBuffer to PCM samples
+      const channels = audioBuffer.numberOfChannels;
+      const sampleRate = audioBuffer.sampleRate;
+      const samples = audioBuffer.length;
+      
+      // Get PCM data from each channel
+      const pcmData = new Int16Array(samples * channels);
+      for (let channel = 0; channel < channels; channel++) {
+        const channelData = audioBuffer.getChannelData(channel);
+        for (let i = 0; i < samples; i++) {
+          // Convert Float32 to Int16
+          const index = i * channels + channel;
+          pcmData[index] = channelData[i] < 0 
+            ? channelData[i] * 0x8000 
+            : channelData[i] * 0x7FFF;
+        }
+      }
+
+      // Initialize MP3 encoder
+      const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+      const mp3Data = [];
+
+      // Encode to MP3 in chunks
+      const chunkSize = 1152; // Must be multiple of 576
+      for (let i = 0; i < pcmData.length; i += chunkSize) {
+        const chunk = pcmData.subarray(i, i + chunkSize);
+        const mp3buf = mp3encoder.encodeBuffer(chunk);
+        if (mp3buf.length > 0) {
+          mp3Data.push(mp3buf);
+        }
+      }
+
+      // Get the final part of the MP3
+      const final = mp3encoder.flush();
+      if (final.length > 0) {
+        mp3Data.push(final);
+      }
+
+      // Combine all MP3 chunks
+      const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
+      const convertedFile = new File([blob], audioFile.name.replace(/\.[^/.]+$/, '.mp3'), {
+        type: 'audio/mpeg'
+      });
+
+      console.log('Conversion completed:', {
+        newType: convertedFile.type,
+        size: convertedFile.size,
+        name: convertedFile.name
+      });
+
+      return convertedFile;
+    } catch (error) {
+      console.error('Error converting to MP3:', error);
+      throw new Error('Failed to convert audio to MP3');
+    }
+  };
+
   const splitFile = async (file: File) => {
     const id = crypto.randomUUID();
     const chunks: { number: number; size: number; blob: Blob }[] = [];
@@ -58,16 +133,16 @@ export function AudioSplitter() {
     }]);
 
     try {
-      const totalChunks = Math.ceil(file.size / MAX_CHUNK_SIZE);
-      const fileExtension = file.name.split('.').pop() || '';
+      // Convert to MP3 first if needed
+      const mp3File = await convertToMp3(file);
+      const totalChunks = Math.ceil(mp3File.size / MAX_CHUNK_SIZE);
       
       for (let i = 0; i < totalChunks; i++) {
         const start = i * MAX_CHUNK_SIZE;
-        const end = Math.min(start + MAX_CHUNK_SIZE, file.size);
-        const chunk = file.slice(start, end, file.type);
+        const end = Math.min(start + MAX_CHUNK_SIZE, mp3File.size);
+        const chunk = mp3File.slice(start, end, mp3File.type);
         
-        // Ensure the chunk maintains the original file type
-        const chunkBlob = new Blob([chunk], { type: file.type });
+        const chunkBlob = new Blob([chunk], { type: 'audio/mpeg' });
         chunks.push({
           number: i + 1,
           size: chunkBlob.size,
@@ -76,8 +151,7 @@ export function AudioSplitter() {
 
         console.log(`Created chunk ${i + 1}/${totalChunks}:`, {
           size: chunkBlob.size,
-          type: chunkBlob.type,
-          extension: fileExtension
+          type: chunkBlob.type
         });
       }
 
@@ -226,7 +300,7 @@ export function AudioSplitter() {
         <h2 className="text-2xl font-bold">Découper et transcrire</h2>
         <p className="text-muted-foreground">
           Pour les fichiers de plus de 25MB : déposez votre fichier audio ici pour le découper en parties de 20MB maximum.
-          Vous pourrez ensuite télécharger ou transcrire chaque partie.
+          Les fichiers seront automatiquement convertis en MP3 pour une meilleure compatibilité.
         </p>
       </div>
 
