@@ -1,201 +1,17 @@
 import { useState, useCallback } from "react";
 import { DropZone } from "./DropZone";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import lamejs from "lamejs";
-
-// Add type definition for webkit prefix
-declare global {
-  interface Window {
-    webkitAudioContext: typeof AudioContext;
-  }
-}
-
-// Add MPEGMode constants that lamejs needs
-const MPEGMode = {
-  STEREO: 0,
-  JOINT_STEREO: 1,
-  DUAL_CHANNEL: 2,
-  MONO: 3
-};
-
-const SUPPORTED_FORMATS = {
-  'audio/opus': ['.opus'],
-  'audio/ogg': ['.ogg'],
-  'audio/mpeg': ['.mp3'],
-  'audio/flac': ['.flac'],
-  'audio/m4a': ['.m4a'],
-  'audio/wav': ['.wav'],
-  'audio/webm': ['.webm'],
-  'video/mp4': ['.mp4']
-};
-
-const MAX_CHUNK_SIZE = 20 * 1024 * 1024; // 20MB for splitting
-const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB for Whisper API
-
-interface ChunkProgress {
-  id: string;
-  originalName: string;
-  chunks: {
-    number: number;
-    size: number;
-    blob: Blob;
-  }[];
-  status: 'splitting' | 'completed' | 'error';
-  error?: string;
-}
-
-interface TranscriptionProgress {
-  id: string;
-  filename: string;
-  progress: number;
-  status: 'pending' | 'transcribing' | 'completed' | 'error';
-  transcription?: string;
-  error?: string;
-}
+import { ChunkProgress, TranscriptionProgress, SUPPORTED_FORMATS, MAX_CHUNK_SIZE, MAX_TRANSCRIPTION_SIZE } from "./AudioConverter/types";
+import { Mp3Converter } from "./AudioConverter/Mp3Converter";
+import { ChunkDisplay } from "./AudioConverter/ChunkDisplay";
+import { TranscriptionDisplay } from "./AudioConverter/TranscriptionDisplay";
 
 export function AudioSplitter() {
   const [splitProgress, setSplitProgress] = useState<ChunkProgress[]>([]);
   const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress[]>([]);
   const { toast } = useToast();
-
-  const convertToMp3 = async (audioFile: File): Promise<File> => {
-    if (audioFile.type === 'audio/mpeg') {
-      console.log('File is already MP3, skipping conversion:', {
-        name: audioFile.name,
-        type: audioFile.type,
-        size: audioFile.size
-      });
-      return audioFile;
-    }
-
-    console.log('Starting audio conversion to MP3:', {
-      originalName: audioFile.name,
-      originalType: audioFile.type,
-      originalSize: audioFile.size
-    });
-
-    try {
-      // Create AudioContext and decode the audio file
-      console.log('Creating AudioContext...');
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      
-      console.log('Reading file as ArrayBuffer...');
-      const arrayBuffer = await audioFile.arrayBuffer();
-      
-      console.log('Decoding audio data...');
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-      console.log('Audio data decoded successfully:', {
-        sampleRate: audioBuffer.sampleRate,
-        numberOfChannels: audioBuffer.numberOfChannels,
-        length: audioBuffer.length,
-        duration: audioBuffer.duration
-      });
-
-      // Convert AudioBuffer to PCM samples
-      const channels = audioBuffer.numberOfChannels;
-      const sampleRate = audioBuffer.sampleRate;
-      const samples = audioBuffer.length;
-      
-      console.log('Converting to PCM format:', {
-        channels,
-        sampleRate,
-        samples
-      });
-
-      // Get PCM data from each channel
-      const pcmData = new Int16Array(samples * channels);
-      for (let channel = 0; channel < channels; channel++) {
-        console.log(`Processing channel ${channel + 1}/${channels}`);
-        const channelData = audioBuffer.getChannelData(channel);
-        for (let i = 0; i < samples; i++) {
-          // Convert Float32 to Int16
-          const index = i * channels + channel;
-          pcmData[index] = channelData[i] < 0 
-            ? channelData[i] * 0x8000 
-            : channelData[i] * 0x7FFF;
-        }
-      }
-
-      console.log('Initializing MP3 encoder with config:', {
-        channels,
-        sampleRate,
-        mode: channels === 1 ? MPEGMode.MONO : MPEGMode.JOINT_STEREO,
-        bitRate: 128
-      });
-
-      const mp3encoder = new lamejs.Mp3Encoder(
-        channels,
-        sampleRate,
-        128,
-        channels === 1 ? MPEGMode.MONO : MPEGMode.JOINT_STEREO
-      );
-
-      const mp3Data = [];
-
-      // Encode to MP3 in chunks
-      const chunkSize = 1152; // Must be multiple of 576
-      const totalChunks = Math.ceil(pcmData.length / chunkSize);
-      
-      console.log('Starting MP3 encoding:', {
-        chunkSize,
-        totalChunks,
-        totalSamples: pcmData.length
-      });
-
-      for (let i = 0; i < pcmData.length; i += chunkSize) {
-        const chunk = pcmData.subarray(i, i + chunkSize);
-        const mp3buf = mp3encoder.encodeBuffer(chunk);
-        if (mp3buf.length > 0) {
-          mp3Data.push(mp3buf);
-        }
-        
-        if (i % (chunkSize * 100) === 0) {
-          const progress = Math.round((i / pcmData.length) * 100);
-          console.log(`Encoding progress: ${progress}%`, {
-            currentChunk: Math.floor(i / chunkSize),
-            totalChunks,
-            bufferSize: mp3buf.length
-          });
-        }
-      }
-
-      console.log('Finalizing MP3 encoding...');
-      const final = mp3encoder.flush();
-      if (final.length > 0) {
-        mp3Data.push(final);
-      }
-
-      // Combine all MP3 chunks
-      console.log('Creating MP3 blob...');
-      const totalSize = mp3Data.reduce((size, chunk) => size + chunk.length, 0);
-      console.log('Total MP3 size:', {
-        sizeBytes: totalSize,
-        sizeMB: (totalSize / (1024 * 1024)).toFixed(2)
-      });
-
-      const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
-      const convertedFile = new File([blob], audioFile.name.replace(/\.[^/.]+$/, '.mp3'), {
-        type: 'audio/mpeg'
-      });
-
-      console.log('Conversion completed successfully:', {
-        newName: convertedFile.name,
-        newType: convertedFile.type,
-        newSize: convertedFile.size,
-        compressionRatio: (convertedFile.size / audioFile.size).toFixed(2)
-      });
-
-      return convertedFile;
-    } catch (error) {
-      console.error('Error during audio conversion:', error);
-      throw new Error(`Erreur lors de la conversion audio: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
-    }
-  };
+  const mp3Converter = new Mp3Converter();
 
   const splitFile = async (file: File) => {
     const id = crypto.randomUUID();
@@ -210,7 +26,7 @@ export function AudioSplitter() {
 
     try {
       // Convert to MP3 first if needed
-      const mp3File = await convertToMp3(file);
+      const mp3File = await mp3Converter.convertToMp3(file);
       const totalChunks = Math.ceil(mp3File.size / MAX_CHUNK_SIZE);
       
       for (let i = 0; i < totalChunks; i++) {
@@ -389,96 +205,16 @@ export function AudioSplitter() {
       </div>
 
       {splitProgress.map((item) => (
-        <div key={item.id} className="space-y-4 border rounded-lg p-4">
-          <div className="flex justify-between items-center">
-            <h3 className="font-medium">{item.originalName}</h3>
-            <span className="text-sm text-muted-foreground">
-              {item.status === 'splitting' && 'Conversion et découpage en cours...'}
-              {item.status === 'completed' && 'Terminé'}
-              {item.status === 'error' && 'Erreur'}
-            </span>
-          </div>
-          
-          {item.status === 'splitting' && (
-            <div className="flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <p>Conversion et découpage en cours...</p>
-            </div>
-          )}
-
-          {item.status === 'completed' && (
-            <div className="space-y-4">
-              <p>Fichier découpé en {item.chunks.length} parties</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {item.chunks.map((chunk) => (
-                  <div key={chunk.number} className="flex gap-2">
-                    <Button
-                      onClick={() => downloadChunk(chunk.blob, item.originalName, chunk.number, item.chunks.length)}
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      Partie {chunk.number} ({Math.round(chunk.size / 1024 / 1024)}MB)
-                    </Button>
-                    <Button
-                      onClick={() => processChunkForTranscription(chunk.blob, item.originalName, chunk.number, item.chunks.length)}
-                      variant="secondary"
-                    >
-                      Transcrire
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {item.status === 'error' && (
-            <p className="text-destructive">{item.error}</p>
-          )}
-        </div>
+        <ChunkDisplay
+          key={item.id}
+          item={item}
+          onDownloadChunk={downloadChunk}
+          onTranscribeChunk={processChunkForTranscription}
+        />
       ))}
 
       {transcriptionProgress.map((item) => (
-        <div key={item.id} className="space-y-4 border rounded-lg p-4">
-          <div className="flex justify-between items-center">
-            <h3 className="font-medium">{item.filename}</h3>
-            <span className="text-sm text-muted-foreground">
-              {item.status === 'pending' && 'En attente...'}
-              {item.status === 'transcribing' && 'Transcription en cours...'}
-              {item.status === 'completed' && 'Terminé'}
-              {item.status === 'error' && 'Erreur'}
-            </span>
-          </div>
-          
-          <Progress value={item.progress} className="w-full" />
-          
-          {item.status === 'transcribing' && (
-            <div className="flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <p>Transcription en cours...</p>
-            </div>
-          )}
-
-          {item.status === 'completed' && item.transcription && (
-            <div className="rounded-lg bg-card p-4">
-              <p className="whitespace-pre-wrap mb-4">{item.transcription}</p>
-              <Button
-                onClick={() => {
-                  navigator.clipboard.writeText(item.transcription!);
-                  toast({
-                    description: "Transcription copiée dans le presse-papier",
-                  });
-                }}
-                size="sm"
-              >
-                Copier le texte
-              </Button>
-            </div>
-          )}
-
-          {item.status === 'error' && (
-            <p className="text-destructive">{item.error}</p>
-          )}
-        </div>
+        <TranscriptionDisplay key={item.id} item={item} />
       ))}
     </div>
   );
