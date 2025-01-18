@@ -56,29 +56,53 @@ export function AudioSplitter() {
 
   const convertToMp3 = async (audioFile: File): Promise<File> => {
     if (audioFile.type === 'audio/mpeg') {
-      return audioFile; // Already MP3
+      console.log('File is already MP3, skipping conversion:', {
+        name: audioFile.name,
+        type: audioFile.type,
+        size: audioFile.size
+      });
+      return audioFile;
     }
 
-    console.log('Converting file to MP3:', {
+    console.log('Starting audio conversion to MP3:', {
+      originalName: audioFile.name,
       originalType: audioFile.type,
-      size: audioFile.size,
-      name: audioFile.name
+      originalSize: audioFile.size
     });
 
     try {
       // Create AudioContext and decode the audio file
+      console.log('Creating AudioContext...');
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      console.log('Reading file as ArrayBuffer...');
       const arrayBuffer = await audioFile.arrayBuffer();
+      
+      console.log('Decoding audio data...');
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      console.log('Audio data decoded successfully:', {
+        sampleRate: audioBuffer.sampleRate,
+        numberOfChannels: audioBuffer.numberOfChannels,
+        length: audioBuffer.length,
+        duration: audioBuffer.duration
+      });
 
       // Convert AudioBuffer to PCM samples
       const channels = audioBuffer.numberOfChannels;
       const sampleRate = audioBuffer.sampleRate;
       const samples = audioBuffer.length;
       
+      console.log('Converting to PCM format:', {
+        channels,
+        sampleRate,
+        samples
+      });
+
       // Get PCM data from each channel
       const pcmData = new Int16Array(samples * channels);
       for (let channel = 0; channel < channels; channel++) {
+        console.log(`Processing channel ${channel + 1}/${channels}`);
         const channelData = audioBuffer.getChannelData(channel);
         for (let i = 0; i < samples; i++) {
           // Convert Float32 to Int16
@@ -89,42 +113,55 @@ export function AudioSplitter() {
         }
       }
 
-      // Initialize MP3 encoder
+      console.log('Initializing MP3 encoder...');
       const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
       const mp3Data = [];
 
       // Encode to MP3 in chunks
       const chunkSize = 1152; // Must be multiple of 576
+      const totalChunks = Math.ceil(pcmData.length / chunkSize);
+      
+      console.log('Starting MP3 encoding:', {
+        chunkSize,
+        totalChunks,
+        totalSamples: pcmData.length
+      });
+
       for (let i = 0; i < pcmData.length; i += chunkSize) {
         const chunk = pcmData.subarray(i, i + chunkSize);
         const mp3buf = mp3encoder.encodeBuffer(chunk);
         if (mp3buf.length > 0) {
           mp3Data.push(mp3buf);
         }
+        
+        if (i % (chunkSize * 100) === 0) {
+          console.log(`Encoding progress: ${Math.round((i / pcmData.length) * 100)}%`);
+        }
       }
 
-      // Get the final part of the MP3
+      console.log('Finalizing MP3 encoding...');
       const final = mp3encoder.flush();
       if (final.length > 0) {
         mp3Data.push(final);
       }
 
       // Combine all MP3 chunks
+      console.log('Creating MP3 blob...');
       const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
       const convertedFile = new File([blob], audioFile.name.replace(/\.[^/.]+$/, '.mp3'), {
         type: 'audio/mpeg'
       });
 
-      console.log('Conversion completed:', {
+      console.log('Conversion completed successfully:', {
+        newName: convertedFile.name,
         newType: convertedFile.type,
-        size: convertedFile.size,
-        name: convertedFile.name
+        newSize: convertedFile.size
       });
 
       return convertedFile;
     } catch (error) {
-      console.error('Error converting to MP3:', error);
-      throw new Error('Failed to convert audio to MP3');
+      console.error('Error during audio conversion:', error);
+      throw new Error(`Erreur lors de la conversion audio: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     }
   };
 
@@ -311,7 +348,7 @@ export function AudioSplitter() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <DropZone
           onDrop={handleDrop}
           supportedFormats={SUPPORTED_FORMATS}
@@ -324,7 +361,7 @@ export function AudioSplitter() {
           <div className="flex justify-between items-center">
             <h3 className="font-medium">{item.originalName}</h3>
             <span className="text-sm text-muted-foreground">
-              {item.status === 'splitting' && 'Découpage en cours...'}
+              {item.status === 'splitting' && 'Conversion et découpage en cours...'}
               {item.status === 'completed' && 'Terminé'}
               {item.status === 'error' && 'Erreur'}
             </span>
@@ -333,7 +370,7 @@ export function AudioSplitter() {
           {item.status === 'splitting' && (
             <div className="flex items-center justify-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin" />
-              <p>Découpage en cours...</p>
+              <p>Conversion et découpage en cours...</p>
             </div>
           )}
 
