@@ -37,5 +37,22 @@ export const SUPPORTED_FORMATS = {
   'video/mp4': ['.mp4']
 } as Record<string, string[]>;
 
+export type ConversionType = 'ogg-to-mp3' | 'opus-to-mp3' | 'other-to-mp3';
+
+export const CONVERSION_TYPES: Record<ConversionType, { label: string, formats: string[] }> = {
+  'ogg-to-mp3': {
+    label: 'OGG vers MP3',
+    formats: ['.ogg']
+  },
+  'opus-to-mp3': {
+    label: 'OPUS vers MP3',
+    formats: ['.opus']
+  },
+  'other-to-mp3': {
+    label: 'Autres formats vers MP3',
+    formats: ['.flac', '.m4a', '.wav', '.webm', '.mp4']
+  }
+};
+
 export const MAX_CHUNK_SIZE = 20 * 1024 * 1024; // 20MB
 export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB Whisper API limit

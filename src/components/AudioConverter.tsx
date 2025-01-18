@@ -6,7 +6,9 @@ import { Progress } from "@/components/ui/progress";
 import { DropZone } from "./DropZone";
 import { Mp3Converter } from "./AudioConverter/Mp3Converter";
 import { AudioAnalyzer } from "./AudioConverter/AudioAnalyzer";
-import { SUPPORTED_FORMATS } from "./AudioConverter/types";
+import { SUPPORTED_FORMATS, CONVERSION_TYPES, ConversionType } from "./AudioConverter/types";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface ConversionProgress {
   id: string;
@@ -23,7 +25,9 @@ export function AudioConverter() {
   const mp3Converter = new Mp3Converter();
   const audioAnalyzer = new AudioAnalyzer();
 
-  const processFile = async (file: File) => {
+  const processFile = async (file: File, conversionType: ConversionType) => {
+    console.log('Processing file:', { name: file.name, type: file.type, conversionType });
+    
     const id = crypto.randomUUID();
     setConversionProgress(prev => [...prev, {
       id,
@@ -51,6 +55,14 @@ export function AudioConverter() {
           description: `Le fichier ${file.name} est déjà au format MP3.`,
         });
         return;
+      }
+
+      // Verify file format matches conversion type
+      const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`;
+      const isValidFormat = CONVERSION_TYPES[conversionType].formats.includes(fileExtension);
+      
+      if (!isValidFormat) {
+        throw new Error(`Format de fichier non supporté pour la conversion ${CONVERSION_TYPES[conversionType].label}`);
       }
 
       setConversionProgress(prev => prev.map(p => 
@@ -96,8 +108,8 @@ export function AudioConverter() {
     }
   };
 
-  const handleDrop = useCallback((acceptedFiles: File[]) => {
-    acceptedFiles.forEach(processFile);
+  const handleDrop = useCallback((acceptedFiles: File[], conversionType: ConversionType) => {
+    acceptedFiles.forEach(file => processFile(file, conversionType));
   }, []);
 
   const handleSaveFile = async (file: File) => {
@@ -120,21 +132,43 @@ export function AudioConverter() {
       <div className="text-center space-y-2">
         <h2 className="text-2xl font-bold">Convertir en MP3</h2>
         <p className="text-muted-foreground">
-          Déposez vos fichiers audio ici pour les convertir au format MP3.
+          Choisissez le type de conversion et déposez vos fichiers audio.
           Les fichiers convertis pourront ensuite être découpés ou transcrits.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {Array.from({ length: 9 }).map((_, index) => (
-          <DropZone
-            key={index}
-            onDrop={handleDrop}
-            supportedFormats={SUPPORTED_FORMATS}
-            index={index}
-          />
+      <Tabs defaultValue="ogg-to-mp3" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          {Object.entries(CONVERSION_TYPES).map(([key, { label }]) => (
+            <TabsTrigger key={key} value={key}>{label}</TabsTrigger>
+          ))}
+        </TabsList>
+
+        {Object.entries(CONVERSION_TYPES).map(([key, { label, formats }]) => (
+          <TabsContent key={key} value={key}>
+            <Card>
+              <CardHeader>
+                <CardTitle>{label}</CardTitle>
+                <CardDescription>
+                  Formats supportés : {formats.join(', ')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <DropZone
+                      key={index}
+                      onDrop={(files) => handleDrop(files, key as ConversionType)}
+                      supportedFormats={formats}
+                      index={index}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         ))}
-      </div>
+      </Tabs>
 
       {conversionProgress.map((item) => (
         <div key={item.id} className="space-y-4 border rounded-lg p-4">
