@@ -59,17 +59,25 @@ export function AudioSplitter() {
 
     try {
       const totalChunks = Math.ceil(file.size / MAX_CHUNK_SIZE);
+      const fileExtension = file.name.split('.').pop() || '';
       
       for (let i = 0; i < totalChunks; i++) {
         const start = i * MAX_CHUNK_SIZE;
         const end = Math.min(start + MAX_CHUNK_SIZE, file.size);
-        const chunk = file.slice(start, end);
+        const chunk = file.slice(start, end, file.type);
         
+        // Ensure the chunk maintains the original file type
         const chunkBlob = new Blob([chunk], { type: file.type });
         chunks.push({
           number: i + 1,
           size: chunkBlob.size,
           blob: chunkBlob
+        });
+
+        console.log(`Created chunk ${i + 1}/${totalChunks}:`, {
+          size: chunkBlob.size,
+          type: chunkBlob.type,
+          extension: fileExtension
         });
       }
 
@@ -105,7 +113,15 @@ export function AudioSplitter() {
 
   const processChunkForTranscription = async (chunk: Blob, originalName: string, chunkNumber: number, totalChunks: number) => {
     const id = crypto.randomUUID();
-    const chunkFile = new File([chunk], `${originalName}_partie${chunkNumber}de${totalChunks}`, { type: chunk.type });
+    const fileExtension = originalName.split('.').pop() || '';
+    const chunkFileName = `${originalName.replace(`.${fileExtension}`, '')}_partie${chunkNumber}de${totalChunks}.${fileExtension}`;
+    const chunkFile = new File([chunk], chunkFileName, { type: chunk.type });
+
+    console.log('Processing chunk for transcription:', {
+      filename: chunkFileName,
+      type: chunk.type,
+      size: chunk.size
+    });
 
     setTranscriptionProgress(prev => [...prev, {
       id,
@@ -117,6 +133,9 @@ export function AudioSplitter() {
     try {
       const formData = new FormData();
       formData.append('file', chunkFile);
+      formData.append('language', 'fr');
+      formData.append('chunkIndex', chunkNumber.toString());
+      formData.append('totalChunks', totalChunks.toString());
       
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
@@ -126,7 +145,13 @@ export function AudioSplitter() {
         } : p
       ));
 
-      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+      console.log('Sending chunk to transcribe-chunks function:', {
+        filename: chunkFile.name,
+        type: chunkFile.type,
+        size: chunkFile.size
+      });
+
+      const { data, error } = await supabase.functions.invoke('transcribe-chunks', {
         body: formData,
       });
 

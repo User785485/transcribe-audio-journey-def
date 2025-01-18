@@ -4,17 +4,29 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 const WHISPER_SUPPORTED_FORMATS = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      headers: corsHeaders,
+      status: 204
+    });
   }
 
   try {
+    console.log('Received request:', req.method);
+    
+    if (req.method !== 'POST') {
+      throw new Error('Method not allowed');
+    }
+
     const formData = await req.formData();
+    console.log('FormData received');
+    
     const audioFile = formData.get('file');
     const language = formData.get('language') || 'fr';
     const chunkIndex = formData.get('chunkIndex');
@@ -22,10 +34,7 @@ serve(async (req) => {
 
     if (!audioFile || !(audioFile instanceof File)) {
       console.error('Invalid file:', audioFile);
-      return new Response(
-        JSON.stringify({ error: 'Aucun fichier audio fourni ou format invalide' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
+      throw new Error('Aucun fichier audio fourni ou format invalide');
     }
 
     console.log('Audio chunk received:', {
@@ -42,13 +51,7 @@ serve(async (req) => {
 
     if (!fileExtension || !WHISPER_SUPPORTED_FORMATS.includes(fileExtension)) {
       console.error('Unsupported file format:', fileExtension);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Format de fichier non supporté', 
-          details: `Le format ${fileExtension || 'inconnu'} n'est pas supporté. Formats supportés: ${WHISPER_SUPPORTED_FORMATS.join(', ')}` 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
+      throw new Error(`Format de fichier non supporté. Formats supportés: ${WHISPER_SUPPORTED_FORMATS.join(', ')}`);
     }
 
     // Prepare file for Whisper API
@@ -57,11 +60,7 @@ serve(async (req) => {
     whisperFormData.append('model', 'whisper-1');
     whisperFormData.append('language', language);
 
-    console.log('Calling Whisper API with file:', {
-      name: audioFile.name,
-      type: audioFile.type,
-      size: audioFile.size
-    });
+    console.log('Calling Whisper API...');
 
     // Call Whisper API
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -144,7 +143,12 @@ serve(async (req) => {
             transcription: transcriptionData
           }
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { 
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
       );
     } else {
       // Return partial transcription
@@ -158,7 +162,12 @@ serve(async (req) => {
             }
           }
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { 
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
       );
     }
 
@@ -170,7 +179,10 @@ serve(async (req) => {
         details: error.message
       }),
       { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
         status: 500
       }
     );
