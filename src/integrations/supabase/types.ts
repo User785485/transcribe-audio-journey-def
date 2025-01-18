@@ -36,6 +36,72 @@ export type Database = {
         }
         Relationships: []
       }
+      conversions: {
+        Row: {
+          converted_filename: string
+          converted_format: string
+          created_at: string
+          file_path: string
+          id: string
+          original_filename: string
+          original_format: string
+          user_id: string | null
+        }
+        Insert: {
+          converted_filename: string
+          converted_format: string
+          created_at?: string
+          file_path: string
+          id?: string
+          original_filename: string
+          original_format: string
+          user_id?: string | null
+        }
+        Update: {
+          converted_filename?: string
+          converted_format?: string
+          created_at?: string
+          file_path?: string
+          id?: string
+          original_filename?: string
+          original_format?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      splits: {
+        Row: {
+          created_at: string
+          end_time: number
+          file_path: string
+          id: string
+          original_filename: string
+          split_filename: string
+          start_time: number
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          end_time: number
+          file_path: string
+          id?: string
+          original_filename: string
+          split_filename: string
+          start_time: number
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          end_time?: number
+          file_path?: string
+          id?: string
+          original_filename?: string
+          split_filename?: string
+          start_time?: number
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       transcriptions: {
         Row: {
           audio_file_id: string
