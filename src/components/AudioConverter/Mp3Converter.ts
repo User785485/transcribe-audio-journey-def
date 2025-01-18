@@ -22,16 +22,15 @@ export class Mp3Converter {
       });
 
       if (!response.ok) {
-        // Get the error response as text first
-        const errorText = await response.text();
+        // Clone the response before reading it as text
+        const errorResponse = response.clone();
+        const errorText = await errorResponse.text();
         console.error('Conversion service error response:', errorText);
         
-        // Try to parse it as JSON if possible
         try {
           const errorData = JSON.parse(errorText);
           throw new Error(`Erreur lors de la conversion: ${errorData.error || errorData.message || 'Erreur inconnue'}`);
         } catch (parseError) {
-          // If we can't parse as JSON, use the raw text
           throw new Error(`Erreur lors de la conversion: ${errorText}`);
         }
       }
