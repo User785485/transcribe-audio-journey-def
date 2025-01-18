@@ -7,6 +7,13 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import lamejs from "lamejs";
 
+// Add type definition for webkit prefix
+declare global {
+  interface Window {
+    webkitAudioContext: typeof AudioContext;
+  }
+}
+
 const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus'],
   'audio/ogg': ['.ogg'],
@@ -193,7 +200,7 @@ export function AudioSplitter() {
 
     console.log('Processing chunk for transcription:', {
       filename: chunkFileName,
-      type: chunk.type,
+      type: chunkFile.type,
       size: chunk.size
     });
 
