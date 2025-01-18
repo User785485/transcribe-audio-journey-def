@@ -22,14 +22,21 @@ export class Mp3Converter {
       });
 
       if (!response.ok) {
-        // Clone the response before reading it as JSON
-        const errorResponse = response.clone();
-        const errorData = await errorResponse.json();
-        console.error('Conversion service error:', errorData);
-        throw new Error(`Erreur lors de la conversion: ${errorData.error || 'Erreur inconnue'}`);
+        // Get the error response as text first
+        const errorText = await response.text();
+        console.error('Conversion service error response:', errorText);
+        
+        // Try to parse it as JSON if possible
+        try {
+          const errorData = JSON.parse(errorText);
+          throw new Error(`Erreur lors de la conversion: ${errorData.error || errorData.message || 'Erreur inconnue'}`);
+        } catch (parseError) {
+          // If we can't parse as JSON, use the raw text
+          throw new Error(`Erreur lors de la conversion: ${errorText}`);
+        }
       }
 
-      // Read the response JSON only once
+      // Read the response JSON
       const data = await response.json();
       console.log('Conversion service response:', data);
 
@@ -39,15 +46,20 @@ export class Mp3Converter {
 
       console.log('Downloading converted MP3...');
       const mp3Response = await fetch(data.mp3Url);
-      const mp3Blob = await mp3Response.blob();
+      
+      if (!mp3Response.ok) {
+        throw new Error('Échec du téléchargement du fichier MP3 converti');
+      }
 
+      // Read the MP3 data once and store it
+      const mp3Data = await mp3Response.arrayBuffer();
       console.log('MP3 download complete', {
-        size: mp3Blob.size,
-        type: mp3Blob.type
+        size: mp3Data.byteLength
       });
 
+      // Create a new File from the ArrayBuffer
       const fileName = file.name.split('.')[0] + '.mp3';
-      return new File([mp3Blob], fileName, { type: 'audio/mpeg' });
+      return new File([mp3Data], fileName, { type: 'audio/mpeg' });
 
     } catch (error) {
       console.error('Conversion error:', error);
