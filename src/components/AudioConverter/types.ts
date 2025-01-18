@@ -28,7 +28,7 @@ export const SUPPORTED_FORMATS = {
   'audio/wav': ['.wav'],
   'audio/webm': ['.webm'],
   'video/mp4': ['.mp4']
-} as const;
+} as Record<string, string[]>;
 
 export const MAX_CHUNK_SIZE = 20 * 1024 * 1024; // 20MB for splitting
 export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB for Whisper API
