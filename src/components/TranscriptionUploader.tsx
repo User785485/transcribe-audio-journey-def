@@ -37,7 +37,6 @@ export function TranscriptionUploader() {
   const processFile = async (file: File) => {
     const id = crypto.randomUUID();
     
-    // Si le fichier est trop gros, rediriger vers la page de découpage
     if (file.size > MAX_TRANSCRIPTION_SIZE) {
       toast({
         title: "Fichier trop volumineux",
@@ -55,9 +54,6 @@ export function TranscriptionUploader() {
     }]);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
           ...p,
@@ -73,7 +69,10 @@ export function TranscriptionUploader() {
       });
 
       const { data, error } = await supabase.functions.invoke('transcribe-simple', {
-        body: formData,
+        body: { file },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
       if (error) {
