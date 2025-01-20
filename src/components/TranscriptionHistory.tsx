@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { FolderSelect } from './FolderSelect';
 import { FolderTree } from './TranscriptionList/FolderTree';
 import { FolderContents } from './TranscriptionList/FolderContents';
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
   audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
@@ -218,53 +220,58 @@ export function TranscriptionHistory() {
   };
 
   if (foldersLoading || transcriptionsLoading) {
-    return <div className="flex justify-center p-8">Chargement...</div>;
+    return (
+      <div className="flex justify-center items-center min-h-[400px]">
+        <div className="text-lg text-muted-foreground">Chargement...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Base de données</h1>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher dans les transcriptions..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
-          <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <FolderPlus className="w-4 h-4 mr-2" />
-                Nouveau dossier
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Créer un nouveau dossier</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Input
-                  placeholder="Nom du dossier"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                />
-                <Button onClick={handleCreateFolder}>
-                  Créer
+    <div className="space-y-6 p-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-2xl font-bold">Base de données</CardTitle>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Search className="w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher dans les transcriptions..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm"
+              />
+            </div>
+            <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <FolderPlus className="w-4 h-4" />
+                  Nouveau dossier
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      <div className="rounded-md border">
-        {folders?.map((folder) => (
-          <div key={folder.id} className="p-4">
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Créer un nouveau dossier</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <Input
+                    placeholder="Nom du dossier"
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                  />
+                  <Button onClick={handleCreateFolder} className="w-full">
+                    Créer
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+        <Separator className="mb-6" />
+        <CardContent className="space-y-6">
+          {folders?.map((folder) => (
             <FolderTree
+              key={folder.id}
               folder={folder}
               searchTerm={searchTerm}
               onMoveToFolder={(transcriptionId) => {
@@ -275,23 +282,23 @@ export function TranscriptionHistory() {
               openFolders={openFolders}
               onToggleFolder={toggleFolder}
             />
-          </div>
-        ))}
+          ))}
 
-        {unorganizedTranscriptions && unorganizedTranscriptions.length > 0 && (
-          <div className="p-4">
-            <div className="font-medium mb-4">Fichiers non classés</div>
-            <FolderContents
-              transcriptions={unorganizedTranscriptions}
-              onMoveToFolder={(transcriptionId) => {
-                setSelectedTranscription(transcriptionId);
-                setIsFolderSelectOpen(true);
-              }}
-              searchTerm={searchTerm}
-            />
-          </div>
-        )}
-      </div>
+          {unorganizedTranscriptions && unorganizedTranscriptions.length > 0 && (
+            <div className="rounded-lg border bg-card p-6">
+              <div className="font-medium text-lg mb-4">Fichiers non classés</div>
+              <FolderContents
+                transcriptions={unorganizedTranscriptions}
+                onMoveToFolder={(transcriptionId) => {
+                  setSelectedTranscription(transcriptionId);
+                  setIsFolderSelectOpen(true);
+                }}
+                searchTerm={searchTerm}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <FolderSelect
         folders={folders || []}

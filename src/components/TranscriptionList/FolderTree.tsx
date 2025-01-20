@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Folder, ChevronRight, ChevronDown, Pencil } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { FolderContents } from './FolderContents';
+import { Separator } from "@/components/ui/separator";
 
 type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
   audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
@@ -38,83 +39,88 @@ export function FolderTree({
 
   return (
     <div className="space-y-4">
-      <Collapsible open={isOpen} onOpenChange={() => onToggleFolder(folder.id)}>
-        <CollapsibleTrigger className="flex items-center gap-2 p-2 hover:bg-accent rounded-lg cursor-pointer w-full">
-          <div className="flex items-center gap-2">
-            {isOpen ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-            <Folder className="w-4 h-4" />
-            {isRenaming ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (newName.trim()) {
-                    onRenameFolder(folder.id, newName);
-                    setIsRenaming(false);
-                  }
-                }}
-                className="flex-1"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Input
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  autoFocus
-                  onBlur={() => {
+      <div className="rounded-lg border bg-card">
+        <Collapsible open={isOpen} onOpenChange={() => onToggleFolder(folder.id)}>
+          <CollapsibleTrigger className="flex items-center gap-2 p-4 hover:bg-accent rounded-t-lg cursor-pointer w-full">
+            <div className="flex items-center gap-2 flex-1">
+              {isOpen ? (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              )}
+              <Folder className="w-4 h-4 text-primary" />
+              {isRenaming ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
                     if (newName.trim()) {
                       onRenameFolder(folder.id, newName);
                       setIsRenaming(false);
                     }
                   }}
-                />
-              </form>
-            ) : (
-              <span className="text-left flex-1">{folder.name}</span>
+                  className="flex-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    autoFocus
+                    onBlur={() => {
+                      if (newName.trim()) {
+                        onRenameFolder(folder.id, newName);
+                        setIsRenaming(false);
+                      }
+                    }}
+                    className="max-w-sm"
+                  />
+                </form>
+              ) : (
+                <span className="text-left flex-1 font-medium">{folder.name}</span>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsRenaming(true);
+                setNewName(folder.name);
+              }}
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="p-4 pt-0">
+            {folder.subfolders?.length > 0 && (
+              <div className="space-y-4 mt-4">
+                {folder.subfolders.map((subfolder) => (
+                  <FolderTree
+                    key={subfolder.id}
+                    folder={subfolder}
+                    searchTerm={searchTerm}
+                    onMoveToFolder={onMoveToFolder}
+                    onRenameFolder={onRenameFolder}
+                    openFolders={openFolders}
+                    onToggleFolder={onToggleFolder}
+                  />
+                ))}
+              </div>
             )}
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsRenaming(true);
-              setNewName(folder.name);
-            }}
-          >
-            <Pencil className="w-4 h-4" />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          {folder.subfolders?.length > 0 && (
-            <div className="space-y-2 pl-4">
-              {folder.subfolders.map((subfolder) => (
-                <FolderTree
-                  key={subfolder.id}
-                  folder={subfolder}
-                  searchTerm={searchTerm}
+            
+            {folder.transcriptions?.length > 0 && (
+              <div className="mt-4">
+                <FolderContents
+                  transcriptions={folder.transcriptions}
                   onMoveToFolder={onMoveToFolder}
-                  onRenameFolder={onRenameFolder}
-                  openFolders={openFolders}
-                  onToggleFolder={onToggleFolder}
+                  searchTerm={searchTerm}
                 />
-              ))}
-            </div>
-          )}
-          
-          {folder.transcriptions?.length > 0 && (
-            <div className="pl-4 mt-2">
-              <FolderContents
-                transcriptions={folder.transcriptions}
-                onMoveToFolder={onMoveToFolder}
-                searchTerm={searchTerm}
-              />
-            </div>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+      <Separator className="my-6" />
     </div>
   );
 }
