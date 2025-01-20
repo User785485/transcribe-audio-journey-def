@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
-import { Search, FolderPlus, RefreshCw } from 'lucide-react';
+import { Search, FolderPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Database } from '@/integrations/supabase/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -48,14 +48,17 @@ export function TranscriptionHistory() {
         throw foldersError;
       }
 
+      console.log('Raw folders data:', foldersData);
+
       const foldersWithContents = await Promise.all(
         foldersData.map(async (folder) => {
+          console.log('Fetching contents for folder:', folder.name, folder.id);
           const contents = await fetchFolderContents(folder.id);
           return { ...folder, ...contents };
         })
       );
 
-      console.log('Folders fetched:', foldersWithContents);
+      console.log('Folders with contents:', foldersWithContents);
       return foldersWithContents;
     },
   });
@@ -84,47 +87,58 @@ export function TranscriptionHistory() {
 
   const fetchFolderContents = async (folderId: string) => {
     console.log('Fetching contents for folder:', folderId);
-    const [subfolders, transcriptions] = await Promise.all([
-      supabase
-        .from('folders')
-        .select('*')
-        .eq('parent_id', folderId)
-        .order('name'),
-      supabase
-        .from('transcriptions')
-        .select(`
-          *,
-          audio_files (*)
-        `)
-        .eq('folder_id', folderId)
-        .order('created_at', { ascending: false }),
-    ]);
+    
+    try {
+      const [subfolders, transcriptions] = await Promise.all([
+        supabase
+          .from('folders')
+          .select('*')
+          .eq('parent_id', folderId)
+          .order('name'),
+        supabase
+          .from('transcriptions')
+          .select(`
+            *,
+            audio_files (*)
+          `)
+          .eq('folder_id', folderId)
+          .order('created_at', { ascending: false }),
+      ]);
 
-    if (subfolders.error) {
-      console.error('Error fetching subfolders:', subfolders.error);
-      throw subfolders.error;
+      console.log('Subfolders query result:', subfolders);
+      console.log('Transcriptions query result:', transcriptions);
+
+      if (subfolders.error) {
+        console.error('Error fetching subfolders:', subfolders.error);
+        throw subfolders.error;
+      }
+      if (transcriptions.error) {
+        console.error('Error fetching transcriptions:', transcriptions.error);
+        throw transcriptions.error;
+      }
+
+      const subfoldersWithContents = await Promise.all(
+        subfolders.data.map(async (subfolder) => {
+          console.log('Recursively fetching contents for subfolder:', subfolder.name, subfolder.id);
+          const contents = await fetchFolderContents(subfolder.id);
+          return { ...subfolder, ...contents };
+        })
+      );
+
+      console.log('Folder contents fetched:', {
+        folderId,
+        subfolders: subfoldersWithContents,
+        transcriptions: transcriptions.data
+      });
+
+      return {
+        subfolders: subfoldersWithContents,
+        transcriptions: transcriptions.data as Transcription[],
+      };
+    } catch (error) {
+      console.error('Error in fetchFolderContents:', error);
+      throw error;
     }
-    if (transcriptions.error) {
-      console.error('Error fetching transcriptions:', transcriptions.error);
-      throw transcriptions.error;
-    }
-
-    const subfoldersWithContents = await Promise.all(
-      subfolders.data.map(async (subfolder) => {
-        const contents = await fetchFolderContents(subfolder.id);
-        return { ...subfolder, ...contents };
-      })
-    );
-
-    console.log('Folder contents fetched:', {
-      subfolders: subfoldersWithContents,
-      transcriptions: transcriptions.data
-    });
-
-    return {
-      subfolders: subfoldersWithContents,
-      transcriptions: transcriptions.data as Transcription[],
-    };
   };
 
   const handleCreateFolder = async () => {
@@ -137,17 +151,26 @@ export function TranscriptionHistory() {
     }
 
     try {
-      const { error } = await supabase
+      console.log('Creating new folder:', {
+        name: newFolderName,
+        parent_id: selectedFolder
+      });
+
+      const { data, error } = await supabase
         .from('folders')
         .insert({
           name: newFolderName,
           parent_id: selectedFolder,
-        });
+        })
+        .select()
+        .single();
 
       if (error) {
         console.error('Error creating folder:', error);
         throw error;
       }
+
+      console.log('New folder created:', data);
 
       toast({
         description: "Dossier créé avec succès",
@@ -176,6 +199,7 @@ export function TranscriptionHistory() {
 
       const transcription = unorganizedTranscriptions?.find(t => t.id === transcriptionId);
       if (transcription?.audio_files?.id) {
+        console.log('Updating audio file folder:', transcription.audio_files.id);
         const { error: audioError } = await supabase
           .from('audio_files')
           .update({ folder_id: folderId })
@@ -260,36 +284,6 @@ export function TranscriptionHistory() {
     setOpenFolders(newOpenFolders);
   };
 
-  const handleDeleteAllFoldersExceptMalo = async () => {
-    try {
-      const { data: allFolders, error: fetchError } = await supabase
-        .from('folders')
-        .select('*');
-
-      if (fetchError) throw fetchError;
-
-      const maloFolder = allFolders?.find(f => f.name.toLowerCase() === 'malo');
-      
-      for (const folder of allFolders || []) {
-        if (folder.id !== maloFolder?.id) {
-          await deleteFolderMutation.mutateAsync(folder.id);
-        }
-      }
-
-      toast({
-        description: "Tous les dossiers ont été supprimés sauf 'Malo'",
-      });
-      
-      refetchFolders();
-    } catch (error) {
-      console.error('Error deleting folders:', error);
-      toast({
-        variant: "destructive",
-        description: "Erreur lors de la suppression des dossiers",
-      });
-    }
-  };
-
   if (foldersLoading || transcriptionsLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
@@ -304,14 +298,6 @@ export function TranscriptionHistory() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-2xl font-bold">Base de données</CardTitle>
           <div className="flex items-center space-x-4">
-            <Button 
-              variant="destructive" 
-              onClick={handleDeleteAllFoldersExceptMalo}
-              className="gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Réinitialiser les dossiers
-            </Button>
             <div className="flex items-center space-x-2">
               <Search className="w-4 h-4 text-muted-foreground" />
               <Input
