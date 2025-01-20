@@ -4,12 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FolderSelect } from "../FolderSelect";
+import { FolderSelect } from "./FolderSelect";
 
 export function TranscriptionHistory() {
   const { toast } = useToast();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
+
   const { data: historyItems, refetch } = useQuery({
     queryKey: ['transcription-history'],
     queryFn: async () => {
@@ -19,6 +20,20 @@ export function TranscriptionHistory() {
         .eq('file_type', 'transcription')
         .order('created_at', { ascending: false })
         .limit(5);
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: folders } = useQuery({
+    queryKey: ['folders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('folders')
+        .select('*')
+        .is('parent_id', null)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data;
@@ -51,7 +66,10 @@ export function TranscriptionHistory() {
           upsert: true
         });
 
-      if (storageError) throw storageError;
+      if (storageError) {
+        console.error('Storage error:', storageError);
+        throw storageError;
+      }
 
       // Create an entry in the audio_files table
       const { error: dbError } = await supabase
@@ -63,7 +81,10 @@ export function TranscriptionHistory() {
           folder_id: folderId
         });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error('Database error:', dbError);
+        throw dbError;
+      }
 
       // Update the history item to mark it as moved
       const { error: historyError } = await supabase
@@ -71,7 +92,10 @@ export function TranscriptionHistory() {
         .update({ folder_name: folderId })
         .eq('id', selectedItemId);
 
-      if (historyError) throw historyError;
+      if (historyError) {
+        console.error('History error:', historyError);
+        throw historyError;
+      }
 
       toast({
         description: "Transcription déplacée avec succès",
@@ -112,8 +136,9 @@ export function TranscriptionHistory() {
                     setSelectedItemId(item.id);
                     setIsFolderSelectOpen(true);
                   }}
+                  disabled={!!item.folder_name}
                 >
-                  Déplacer vers un dossier
+                  {item.folder_name ? 'Déjà transféré' : 'Déplacer vers un dossier'}
                 </Button>
               </TableCell>
             </TableRow>
@@ -121,8 +146,12 @@ export function TranscriptionHistory() {
         </TableBody>
       </Table>
       <FolderSelect
+        folders={folders || []}
         isOpen={isFolderSelectOpen}
-        onClose={() => setIsFolderSelectOpen(false)}
+        onClose={() => {
+          setIsFolderSelectOpen(false);
+          setSelectedItemId(null);
+        }}
         onSelect={handleMoveToFolder}
       />
     </div>

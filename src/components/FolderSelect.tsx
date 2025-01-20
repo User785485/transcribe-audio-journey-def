@@ -1,18 +1,13 @@
-import { useState } from "react";
-import { Folder, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Database } from "@/integrations/supabase/types";
+import { Button } from "@/components/ui/button";
+import { Folder, ChevronRight } from "lucide-react";
 
-type Folder = Database['public']['Tables']['folders']['Row'] & {
-  subfolders?: Folder[];
-};
+interface Folder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+}
 
 interface FolderSelectProps {
   folders: Folder[];
@@ -26,15 +21,14 @@ export function FolderSelect({ folders, isOpen, onClose, onSelect }: FolderSelec
     <div key={folder.id}>
       <Button
         variant="ghost"
-        className="w-full justify-start gap-2 pl-4"
+        className="w-full justify-start gap-2"
         style={{ paddingLeft: `${depth * 16 + 16}px` }}
         onClick={() => onSelect(folder.id)}
       >
         <Folder className="h-4 w-4" />
-        <ChevronRight className="h-4 w-4" />
-        {folder.name}
+        <span className="truncate">{folder.name}</span>
+        <ChevronRight className="h-4 w-4 ml-auto" />
       </Button>
-      {folder.subfolders?.map((subfolder) => renderFolder(subfolder, depth + 1))}
     </div>
   );
 
@@ -46,7 +40,7 @@ export function FolderSelect({ folders, isOpen, onClose, onSelect }: FolderSelec
         </DialogHeader>
         <ScrollArea className="h-[300px] pr-4">
           <div className="space-y-1">
-            {folders?.map((folder) => renderFolder(folder))}
+            {folders.map((folder) => renderFolder(folder))}
           </div>
         </ScrollArea>
       </DialogContent>
