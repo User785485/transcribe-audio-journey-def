@@ -5,7 +5,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 serve(async (req) => {
@@ -48,6 +47,24 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Verify bucket exists
+    const { data: buckets, error: bucketsError } = await supabaseAdmin
+      .storage
+      .listBuckets();
+
+    console.log('Available buckets:', buckets?.map(b => b.name));
+
+    if (bucketsError) {
+      console.error('Error listing buckets:', bucketsError);
+      throw new Error('Erreur lors de la vérification du bucket');
+    }
+
+    const audioBucket = buckets?.find(b => b.name === 'audio');
+    if (!audioBucket) {
+      console.error('Audio bucket not found');
+      throw new Error('Le bucket audio n\'existe pas');
+    }
+
     // Store file in Supabase Storage
     const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
     console.log('Uploading file to Storage:', filePath);
@@ -61,7 +78,7 @@ serve(async (req) => {
 
     if (storageError) {
       console.error('Storage error:', storageError);
-      throw storageError;
+      throw new Error(`Erreur lors du stockage du fichier: ${storageError.message}`);
     }
 
     // Prepare file for Whisper API
@@ -103,7 +120,7 @@ serve(async (req) => {
 
     if (audioFileError) {
       console.error('Audio files error:', audioFileError);
-      throw audioFileError;
+      throw new Error(`Erreur lors de l'enregistrement du fichier: ${audioFileError.message}`);
     }
 
     // Store transcription in database
@@ -121,7 +138,7 @@ serve(async (req) => {
 
     if (transcriptionError) {
       console.error('Transcription error:', transcriptionError);
-      throw transcriptionError;
+      throw new Error(`Erreur lors de l'enregistrement de la transcription: ${transcriptionError.message}`);
     }
 
     console.log('All operations completed successfully');
