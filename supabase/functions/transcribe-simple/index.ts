@@ -22,25 +22,28 @@ serve(async (req) => {
       throw new Error('Method not allowed');
     }
 
-    const body = await req.json();
-    console.log('Request body received:', body);
+    const formData = await req.formData();
+    console.log('FormData received');
     
-    if (!body.file) {
-      console.error('No file in request body');
-      throw new Error('Aucun fichier audio fourni');
+    const audioFile = formData.get('file');
+    const language = 'fr';
+
+    if (!audioFile || !(audioFile instanceof File)) {
+      console.error('Invalid file:', audioFile);
+      throw new Error('Aucun fichier audio fourni ou format invalide');
     }
 
-    console.log('Audio file info:', {
-      name: body.file.name,
-      type: body.file.type,
-      size: body.file.size
+    console.log('Audio file received:', {
+      name: audioFile.name,
+      type: audioFile.type,
+      size: audioFile.size
     });
 
     // Prepare file for Whisper API
     const whisperFormData = new FormData();
-    whisperFormData.append('file', body.file);
+    whisperFormData.append('file', audioFile);
     whisperFormData.append('model', 'whisper-1');
-    whisperFormData.append('language', 'fr');
+    whisperFormData.append('language', language);
 
     console.log('Calling Whisper API...');
 
@@ -63,7 +66,7 @@ serve(async (req) => {
     console.log('Transcription received:', transcription.substring(0, 100) + '...');
 
     // Store file and transcription
-    const filePath = `public/${crypto.randomUUID()}.${body.file.name.split('.').pop()}`;
+    const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
 
     console.log('Uploading file to Storage...');
     const supabaseAdmin = createClient(
@@ -73,8 +76,8 @@ serve(async (req) => {
 
     const { data: storageData, error: storageError } = await supabaseAdmin.storage
       .from('audio')
-      .upload(filePath, body.file, {
-        contentType: body.file.type,
+      .upload(filePath, audioFile, {
+        contentType: audioFile.type,
         upsert: false
       });
 
@@ -87,7 +90,7 @@ serve(async (req) => {
     const { data: audioFileData, error: audioFileError } = await supabaseAdmin
       .from('audio_files')
       .insert({
-        filename: body.file.name,
+        filename: audioFile.name,
         file_path: filePath
       })
       .select()
@@ -104,7 +107,7 @@ serve(async (req) => {
       .insert({
         audio_file_id: audioFileData.id,
         transcription,
-        language: 'fr',
+        language,
         status: 'completed'
       })
       .select()

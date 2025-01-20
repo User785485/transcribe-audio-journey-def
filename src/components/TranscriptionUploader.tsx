@@ -54,6 +54,9 @@ export function TranscriptionUploader() {
     }]);
 
     try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
           ...p,
@@ -69,10 +72,7 @@ export function TranscriptionUploader() {
       });
 
       const { data, error } = await supabase.functions.invoke('transcribe-simple', {
-        body: { file },
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        body: formData
       });
 
       if (error) {
