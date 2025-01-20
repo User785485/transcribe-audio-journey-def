@@ -58,7 +58,24 @@ export function TranscriptionHistory() {
       // Create a Blob from the transcription text
       const transcriptionBlob = new Blob([historyItem.transcription], { type: 'text/plain' });
       
-      // Upload the file to storage
+      // First, create the audio_files entry
+      const { data: audioFileData, error: dbError } = await supabase
+        .from('audio_files')
+        .insert({
+          filename: transcriptionFileName,
+          file_path: transcriptionPath,
+          file_type: 'text',
+          folder_id: folderId
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error('Database error:', dbError);
+        throw dbError;
+      }
+
+      // Then upload the file to storage
       const { error: storageError } = await supabase.storage
         .from('audio')
         .upload(transcriptionPath, transcriptionBlob, {
@@ -68,22 +85,9 @@ export function TranscriptionHistory() {
 
       if (storageError) {
         console.error('Storage error:', storageError);
+        // Rollback the database entry if storage upload fails
+        await supabase.from('audio_files').delete().eq('id', audioFileData.id);
         throw storageError;
-      }
-
-      // Create an entry in the audio_files table
-      const { error: dbError } = await supabase
-        .from('audio_files')
-        .insert({
-          filename: transcriptionFileName,
-          file_path: transcriptionPath,
-          file_type: 'text',
-          folder_id: folderId
-        });
-
-      if (dbError) {
-        console.error('Database error:', dbError);
-        throw dbError;
       }
 
       // Update the history item to mark it as moved
