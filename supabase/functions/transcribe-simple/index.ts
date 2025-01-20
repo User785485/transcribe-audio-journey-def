@@ -70,12 +70,7 @@ serve(async (req) => {
     }
 
     // Store file
-    const fileExtension = audioFile.name.split('.').pop()?.toLowerCase();
-    if (!fileExtension) {
-      throw new Error('Extension de fichier invalide');
-    }
-
-    const filePath = `public/${crypto.randomUUID()}.${fileExtension}`;
+    const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
     console.log('📤 Uploading file to:', filePath);
 
     const { error: storageError } = await supabaseAdmin.storage
@@ -124,48 +119,31 @@ serve(async (req) => {
     const { text: transcription } = await whisperResponse.json();
     console.log('✅ Transcription received, length:', transcription.length);
 
-    // Store audio file reference
-    console.log('💾 Storing audio file reference...');
-    const { data: audioFileData, error: audioFileError } = await supabaseAdmin
-      .from('audio_files')
+    // Store in history table
+    console.log('💾 Storing in history...');
+    const { error: historyError } = await supabaseAdmin
+      .from('history')
       .insert({
         filename: audioFile.name,
-        file_path: filePath
-      })
-      .select()
-      .single();
+        file_path: filePath,
+        transcription: transcription,
+        file_type: 'transcription'
+      });
 
-    if (audioFileError) {
-      console.error('❌ Failed to store audio file reference:', audioFileError);
+    if (historyError) {
+      console.error('❌ Failed to store in history:', historyError);
       throw new Error('Erreur lors de l\'enregistrement des métadonnées');
     }
 
-    console.log('✅ Audio file reference stored');
-
-    // Store transcription
-    console.log('💾 Storing transcription...');
-    const { data: transcriptionData, error: transcriptionError } = await supabaseAdmin
-      .from('transcriptions')
-      .insert({
-        audio_file_id: audioFileData.id,
-        transcription: transcription
-      })
-      .select()
-      .single();
-
-    if (transcriptionError) {
-      console.error('❌ Failed to store transcription:', transcriptionError);
-      throw new Error('Erreur lors de l\'enregistrement de la transcription');
-    }
-
-    console.log('✅ Transcription stored successfully');
+    console.log('✅ History entry created successfully');
 
     return new Response(
       JSON.stringify({
         success: true,
         data: {
-          audioFile: audioFileData,
-          transcription: transcriptionData
+          filename: audioFile.name,
+          filePath,
+          transcription
         }
       }),
       { 

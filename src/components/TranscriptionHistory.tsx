@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
@@ -24,7 +24,6 @@ type HistoryItem = {
 export function TranscriptionHistory() {
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const { data: historyItems, isLoading } = useQuery({
     queryKey: ['history'],
