@@ -32,7 +32,7 @@ export function Layout() {
             <Link to="/history">
               <Button variant="ghost" className="w-full justify-start">
                 <History className="mr-2 h-4 w-4" />
-                Historique
+                Base de données
               </Button>
             </Link>
             <Link to="/prompts">
@@ -44,7 +44,9 @@ export function Layout() {
             <Link to="/whatsapp">
               <Button variant="ghost" className="w-full justify-start">
                 <MessageSquare className="mr-2 h-4 w-4" />
-                WhatsApp
+                <a href="https://web.whatsapp.com" target="_blank" rel="noopener noreferrer" className="w-full text-left">
+                  WhatsApp Web
+                </a>
               </Button>
             </Link>
             <Link to="/settings">
