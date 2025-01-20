@@ -1,16 +1,12 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FolderSelect } from "./FolderSelect";
+import { Button } from "@/components/ui/button";
+import { Copy, Download } from "lucide-react";
 
 export function TranscriptionHistory() {
   const { toast } = useToast();
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
-  const queryClient = useQueryClient();
 
   const { data: historyItems, error: historyError } = useQuery({
     queryKey: ['transcription-history'],
@@ -33,138 +29,36 @@ export function TranscriptionHistory() {
     },
   });
 
-  const { data: folders } = useQuery({
-    queryKey: ['folders'],
-    queryFn: async () => {
-      console.log('🔍 Fetching folders...');
-      const { data, error } = await supabase
-        .from('folders')
-        .select('*')
-        .is('parent_id', null)
-        .order('created_at', { ascending: false });
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      description: "Texte copié dans le presse-papier",
+    });
+  };
 
-      if (error) {
-        console.error('❌ Error fetching folders:', error);
-        throw error;
-      }
-
-      console.log('✅ Folders fetched:', data);
-      return data;
-    },
-  });
-
-  const moveToFolderMutation = useMutation({
-    mutationFn: async ({ historyItem, folderId }: { historyItem: any, folderId: string }) => {
-      console.log('🚀 Starting move operation:', { historyItem, folderId });
-
-      if (!historyItem.transcription) {
-        console.error('❌ No transcription found in history item');
-        throw new Error('Pas de transcription trouvée');
-      }
-
-      // 1. Create text file name
-      const transcriptionFileName = `${historyItem.filename.split('.')[0]}_transcription.txt`;
-      const transcriptionPath = `${folderId}/${transcriptionFileName}`;
-      console.log('📝 Will create file:', { transcriptionFileName, transcriptionPath });
-
-      // 2. Create text file blob
-      const transcriptionBlob = new Blob([historyItem.transcription], { type: 'text/plain' });
-      console.log('📦 Created blob:', { size: transcriptionBlob.size });
-
-      // 3. Upload to storage
-      console.log('📤 Uploading to storage...');
-      const { error: uploadError } = await supabase.storage
+  const handleDownload = async (filePath: string, filename: string) => {
+    try {
+      const { data, error } = await supabase.storage
         .from('audio')
-        .upload(transcriptionPath, transcriptionBlob, {
-          contentType: 'text/plain',
-          upsert: true
-        });
+        .download(filePath);
 
-      if (uploadError) {
-        console.error('❌ Storage upload failed:', uploadError);
-        throw uploadError;
-      }
-      console.log('✅ File uploaded to storage');
+      if (error) throw error;
 
-      // 4. Create audio_files entry
-      console.log('📝 Creating audio_files entry...');
-      const { error: fileError } = await supabase
-        .from('audio_files')
-        .insert({
-          filename: transcriptionFileName,
-          file_path: transcriptionPath,
-          file_type: 'text',
-          folder_id: folderId
-        });
-
-      if (fileError) {
-        console.error('❌ Failed to create audio_files entry:', fileError);
-        throw fileError;
-      }
-      console.log('✅ Audio files entry created');
-
-      // 5. Get folder name for history update
-      console.log('🔍 Getting folder name...');
-      const { data: folderData, error: folderError } = await supabase
-        .from('folders')
-        .select('name')
-        .eq('id', folderId)
-        .single();
-
-      if (folderError) {
-        console.error('❌ Failed to get folder name:', folderError);
-        throw folderError;
-      }
-      console.log('✅ Got folder name:', folderData.name);
-
-      // 6. Update history entry
-      console.log('📝 Updating history entry...');
-      const { error: historyError } = await supabase
-        .from('history')
-        .update({ folder_name: folderData.name })
-        .eq('id', historyItem.id);
-
-      if (historyError) {
-        console.error('❌ Failed to update history:', historyError);
-        throw historyError;
-      }
-      console.log('✅ History entry updated');
-
-      return { folderName: folderData.name };
-    },
-    onSuccess: () => {
-      console.log('🎉 Move operation completed successfully');
-      queryClient.invalidateQueries({ queryKey: ['transcription-history'] });
-      queryClient.invalidateQueries({ queryKey: ['folder-files'] });
-      toast({
-        description: "Transcription déplacée avec succès",
-      });
-      setIsFolderSelectOpen(false);
-      setSelectedItemId(null);
-    },
-    onError: (error: Error) => {
-      console.error('❌ Move operation failed:', error);
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('❌ Error downloading file:', error);
       toast({
         variant: "destructive",
-        description: `Erreur lors du déplacement: ${error.message}`,
+        description: "Impossible de télécharger le fichier audio",
       });
     }
-  });
-
-  const handleMoveToFolder = async (folderId: string) => {
-    if (!selectedItemId) {
-      console.error('❌ No item selected');
-      return;
-    }
-
-    const historyItem = historyItems?.find(item => item.id === selectedItemId);
-    if (!historyItem) {
-      console.error('❌ Selected item not found in history');
-      return;
-    }
-
-    console.log('🎯 Moving item to folder:', { historyItem, folderId });
-    await moveToFolderMutation.mutate({ historyItem, folderId });
   };
 
   if (historyError) {
@@ -188,31 +82,29 @@ export function TranscriptionHistory() {
               <TableCell>{item.filename}</TableCell>
               <TableCell>{new Date(item.created_at).toLocaleDateString()}</TableCell>
               <TableCell>
-                <Button
-                  onClick={() => {
-                    console.log('🔍 Selected item for transfer:', item);
-                    setSelectedItemId(item.id);
-                    setIsFolderSelectOpen(true);
-                  }}
-                  disabled={!!item.folder_name || moveToFolderMutation.isPending}
-                >
-                  {item.folder_name ? 'Déjà transféré' : 'Déplacer vers un dossier'}
-                </Button>
+                <div className="flex space-x-2">
+                  <Button
+                    onClick={() => handleCopy(item.transcription!)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copier
+                  </Button>
+                  <Button
+                    onClick={() => handleDownload(item.file_path, item.filename)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Télécharger
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-      <FolderSelect
-        folders={folders || []}
-        isOpen={isFolderSelectOpen}
-        onClose={() => {
-          console.log('🔍 Closing folder select');
-          setIsFolderSelectOpen(false);
-          setSelectedItemId(null);
-        }}
-        onSelect={handleMoveToFolder}
-      />
     </div>
   );
 }
