@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Folder, Upload, Plus, Search } from "lucide-react";
+import { Folder, Upload, Plus, Search, Pencil } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -36,6 +36,8 @@ export const Database = () => {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -89,6 +91,32 @@ export const Database = () => {
       toast({
         variant: "destructive",
         description: "Erreur lors de la création du dossier",
+      });
+    },
+  });
+
+  const renameFolderMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const { data, error } = await supabase
+        .from("folders")
+        .update({ name })
+        .eq("id", id);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      setEditingFolderId(null);
+      setEditingFolderName("");
+      toast({
+        description: "Dossier renommé avec succès",
+      });
+    },
+    onError: (error) => {
+      console.error("Error renaming folder:", error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors du renommage du dossier",
       });
     },
   });
@@ -177,6 +205,22 @@ export const Database = () => {
     createFolderMutation.mutate(newFolderName);
   };
 
+  const handleRenameFolder = (id: string) => {
+    if (!editingFolderName.trim()) {
+      toast({
+        variant: "destructive",
+        description: "Le nom du dossier est requis",
+      });
+      return;
+    }
+    renameFolderMutation.mutate({ id, name: editingFolderName });
+  };
+
+  const startEditing = (folder: { id: string; name: string }) => {
+    setEditingFolderId(folder.id);
+    setEditingFolderName(folder.name);
+  };
+
   const filteredFolders = folders?.filter(folder => 
     folder.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -233,7 +277,43 @@ export const Database = () => {
             onClick={() => setSelectedFolderId(folder.id)}
           >
             <Folder className="w-6 h-6 text-blue-500" />
-            <span className="font-medium">{folder.name}</span>
+            {editingFolderId === folder.id ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleRenameFolder(folder.id);
+                }}
+                className="flex-1 flex gap-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Input
+                  value={editingFolderName}
+                  onChange={(e) => setEditingFolderName(e.target.value)}
+                  autoFocus
+                  onBlur={() => {
+                    if (editingFolderName.trim()) {
+                      handleRenameFolder(folder.id);
+                    }
+                  }}
+                />
+              </form>
+            ) : (
+              <>
+                <span className="font-medium flex-1">{folder.name}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEditing(folder);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </>
+            )}
           </div>
         ))}
       </div>
