@@ -224,38 +224,41 @@ export function TranscriptionHistory() {
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Search className="w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher dans les transcriptions..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
-          />
-        </div>
-        <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <FolderPlus className="w-4 h-4 mr-2" />
-              Nouveau dossier
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Créer un nouveau dossier</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <Input
-                placeholder="Nom du dossier"
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-              />
-              <Button onClick={handleCreateFolder}>
-                Créer
+        <h1 className="text-2xl font-bold">Base de données</h1>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <Search className="w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher dans les transcriptions..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+          <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                Nouveau dossier
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Créer un nouveau dossier</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <Input
+                  placeholder="Nom du dossier"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                />
+                <Button onClick={handleCreateFolder}>
+                  Créer
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="rounded-md border">

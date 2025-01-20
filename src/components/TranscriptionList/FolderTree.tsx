@@ -40,52 +40,52 @@ export function FolderTree({
     <div className="space-y-4">
       <Collapsible open={isOpen} onOpenChange={() => onToggleFolder(folder.id)}>
         <CollapsibleTrigger className="flex items-center gap-2 p-2 hover:bg-accent rounded-lg cursor-pointer w-full">
-          {isOpen ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
-          <Folder className="w-4 h-4" />
-          {isRenaming ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (newName.trim()) {
-                  onRenameFolder(folder.id, newName);
-                  setIsRenaming(false);
-                }
-              }}
-              className="flex-1"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                autoFocus
-                onBlur={() => {
+          <div className="flex items-center gap-2">
+            {isOpen ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+            <Folder className="w-4 h-4" />
+            {isRenaming ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
                   if (newName.trim()) {
                     onRenameFolder(folder.id, newName);
                     setIsRenaming(false);
                   }
                 }}
-              />
-            </form>
-          ) : (
-            <>
-              <span className="flex-1">{folder.name}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsRenaming(true);
-                  setNewName(folder.name);
-                }}
+                className="flex-1"
+                onClick={(e) => e.stopPropagation()}
               >
-                <Pencil className="w-4 h-4" />
-              </Button>
-            </>
-          )}
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  autoFocus
+                  onBlur={() => {
+                    if (newName.trim()) {
+                      onRenameFolder(folder.id, newName);
+                      setIsRenaming(false);
+                    }
+                  }}
+                />
+              </form>
+            ) : (
+              <span className="text-left flex-1">{folder.name}</span>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsRenaming(true);
+              setNewName(folder.name);
+            }}
+          >
+            <Pencil className="w-4 h-4" />
+          </Button>
         </CollapsibleTrigger>
         <CollapsibleContent>
           {folder.subfolders?.length > 0 && (
