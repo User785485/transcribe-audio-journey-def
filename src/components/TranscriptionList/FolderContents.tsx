@@ -69,6 +69,7 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
       
       queryClient.invalidateQueries({ queryKey: ['folders'] });
       queryClient.invalidateQueries({ queryKey: ['transcriptions', 'unorganized'] });
+      setIsAddDialogOpen(false);
     } catch (error) {
       console.error('Erreur lors de l\'ajout du fichier:', error);
       toast({
@@ -124,9 +125,9 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <Tabs defaultValue="to_convert" value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="flex justify-between items-center">
             <TabsList>
               <TabsTrigger value="to_convert">À convertir</TabsTrigger>
               <TabsTrigger value="converted">Convertis</TabsTrigger>
@@ -142,102 +143,93 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>
-                    Ajouter un fichier
-                  </DialogTitle>
+                  <DialogTitle>Ajouter un fichier</DialogTitle>
                 </DialogHeader>
                 <div {...getRootProps()} className="border-2 border-dashed rounded-lg p-6 cursor-pointer hover:border-primary transition-colors">
                   <input {...getInputProps()} />
-                  <p className="text-center text-muted-foreground">
-                    {isDragActive ? "Déposez les fichiers ici..." : "Glissez-déposez des fichiers ici, ou cliquez pour sélectionner"}
-                  </p>
+                  <div className="text-center space-y-2">
+                    <p className="text-muted-foreground">
+                      {isDragActive ? "Déposez les fichiers ici..." : "Glissez-déposez des fichiers ici, ou cliquez pour sélectionner"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Formats supportés : {Object.values(SUPPORTED_FORMATS).flat().join(', ')}
+                    </p>
+                  </div>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
 
-          {['to_convert', 'converted', 'transcription'].map((tabValue) => (
-            <TabsContent key={tabValue} value={tabValue}>
-              <div
-                {...getRootProps()}
-                className={`rounded-lg border-2 border-dashed transition-colors ${
-                  isDragActive ? 'border-primary bg-primary/10' : 'border-border'
-                }`}
-              >
-                <input {...getInputProps()} />
-                <Table>
-                  <TableHeader>
+          <TabsContent value={activeTab}>
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fichier</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Transcription</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTranscriptions.length === 0 ? (
                     <TableRow>
-                      <TableHead>Fichier</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Transcription</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                        Aucun fichier trouvé dans cette catégorie
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTranscriptions.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                          {isDragActive ? (
-                            "Déposez les fichiers ici..."
-                          ) : (
-                            "Glissez-déposez des fichiers ici ou utilisez le bouton Ajouter"
-                          )}
+                  ) : (
+                    filteredTranscriptions.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell className="flex items-center gap-2">
+                          <FileAudio className="w-4 h-4" />
+                          {t.audio_files?.filename}
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(t.created_at), 'PPP', { locale: fr })}
+                        </TableCell>
+                        <TableCell className="max-w-md truncate">
+                          {t.transcription}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => t.transcription && handleCopy(t.transcription)}
+                              title="Copier la transcription"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
+                              title="Télécharger l'audio"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => onMoveToFolder(t.id)}>
+                                  Déplacer vers...
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
-                    ) : (
-                      filteredTranscriptions.map((t) => (
-                        <TableRow key={t.id}>
-                          <TableCell className="flex items-center gap-2">
-                            <FileAudio className="w-4 h-4" />
-                            {t.audio_files?.filename}
-                          </TableCell>
-                          <TableCell>
-                            {format(new Date(t.created_at), 'PPP', { locale: fr })}
-                          </TableCell>
-                          <TableCell className="max-w-md truncate">
-                            {t.transcription}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => handleCopy(t.transcription)}
-                                title="Copier la transcription"
-                              >
-                                <Copy className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
-                                title="Télécharger l'audio"
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => onMoveToFolder(t.id)}>
-                                    Déplacer vers...
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-          ))}
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
     </div>
