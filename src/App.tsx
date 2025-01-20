@@ -11,6 +11,7 @@ import { Settings } from "./components/Settings";
 import { AudioSplitter } from "./components/AudioSplitter";
 import FileConverter from "./components/FileConverter";
 import { Prompts } from "./components/Prompts";
+import { WhatsApp } from "./pages/WhatsApp";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ const App = () => (
               <Route path="history" element={<TranscriptionHistory />} />
               <Route path="settings" element={<Settings />} />
               <Route path="prompts" element={<Prompts />} />
+              <Route path="whatsapp" element={<WhatsApp />} />
             </Route>
           </Routes>
         </BrowserRouter>
