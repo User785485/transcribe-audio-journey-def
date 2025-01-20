@@ -140,7 +140,6 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
         return;
       }
 
-      // Create audio file entry if needed
       let audioFileId;
       if (activeTab !== 'transcription') {
         const { data: audioFile, error: audioError } = await supabase
@@ -158,7 +157,6 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
         audioFileId = audioFile.id;
       }
 
-      // Create transcription if in transcription tab
       if (activeTab === 'transcription') {
         const { error: transcriptionError } = await supabase
           .from('transcriptions')
