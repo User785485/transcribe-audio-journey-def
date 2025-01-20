@@ -294,6 +294,7 @@ export function TranscriptionHistory() {
                   setIsFolderSelectOpen(true);
                 }}
                 searchTerm={searchTerm}
+                folderId={null}
               />
             </div>
           )}

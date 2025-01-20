@@ -114,6 +114,7 @@ export function FolderTree({
                   transcriptions={folder.transcriptions}
                   onMoveToFolder={onMoveToFolder}
                   searchTerm={searchTerm}
+                  folderId={folder.id}
                 />
               </div>
             )}
