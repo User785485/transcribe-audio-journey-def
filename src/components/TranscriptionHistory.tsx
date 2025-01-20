@@ -1,290 +1,95 @@
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
-import { Search, FolderPlus } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { Database } from '@/integrations/supabase/types';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { FolderSelect } from './FolderSelect';
-import { FolderTree } from './TranscriptionList/FolderTree';
-import { FolderContents } from './TranscriptionList/FolderContents';
+import { Search } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { FileAudio, Copy, Download } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
-type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
-  audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
-};
-
-type Folder = Database['public']['Tables']['folders']['Row'] & {
-  transcriptions: Transcription[];
-  subfolders: Folder[];
+type HistoryItem = {
+  id: string;
+  filename: string;
+  file_path: string;
+  transcription: string | null;
+  file_type: string;
+  folder_name: string | null;
+  created_at: string;
 };
 
 export function TranscriptionHistory() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
-  const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
-  const [selectedTranscription, setSelectedTranscription] = useState<string | null>(null);
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: folders, isLoading: foldersLoading, refetch: refetchFolders } = useQuery({
-    queryKey: ['folders'],
+  const { data: historyItems, isLoading } = useQuery({
+    queryKey: ['history'],
     queryFn: async () => {
-      console.log('Fetching folders...');
-      const { data: foldersData, error: foldersError } = await supabase
-        .from('folders')
-        .select('*')
-        .is('parent_id', null)
-        .order('name');
-
-      if (foldersError) {
-        console.error('Error fetching folders:', foldersError);
-        throw foldersError;
-      }
-
-      console.log('Raw folders data:', foldersData);
-
-      const foldersWithContents = await Promise.all(
-        foldersData.map(async (folder) => {
-          console.log('Fetching contents for folder:', folder.name, folder.id);
-          const contents = await fetchFolderContents(folder.id);
-          return { ...folder, ...contents };
-        })
-      );
-
-      console.log('Folders with contents:', foldersWithContents);
-      return foldersWithContents;
-    },
-  });
-
-  const { data: unorganizedTranscriptions, isLoading: transcriptionsLoading } = useQuery({
-    queryKey: ['transcriptions', 'unorganized'],
-    queryFn: async () => {
-      console.log('Fetching unorganized transcriptions...');
+      console.log('Fetching history items...');
       const { data, error } = await supabase
-        .from('transcriptions')
-        .select(`
-          *,
-          audio_files (*)
-        `)
-        .is('folder_id', null)
+        .from('history')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching unorganized transcriptions:', error);
+        console.error('Error fetching history:', error);
         throw error;
       }
-      console.log('Unorganized transcriptions:', data);
-      return data as Transcription[];
+
+      console.log('History items fetched:', data);
+      return data as HistoryItem[];
     },
   });
 
-  const fetchFolderContents = async (folderId: string) => {
-    console.log('Fetching contents for folder:', folderId);
-    
-    try {
-      const [subfolders, transcriptions] = await Promise.all([
-        supabase
-          .from('folders')
-          .select('*')
-          .eq('parent_id', folderId)
-          .order('name'),
-        supabase
-          .from('transcriptions')
-          .select(`
-            *,
-            audio_files (*)
-          `)
-          .eq('folder_id', folderId)
-          .order('created_at', { ascending: false }),
-      ]);
-
-      console.log('Subfolders query result:', subfolders);
-      console.log('Transcriptions query result:', transcriptions);
-
-      if (subfolders.error) {
-        console.error('Error fetching subfolders:', subfolders.error);
-        throw subfolders.error;
-      }
-      if (transcriptions.error) {
-        console.error('Error fetching transcriptions:', transcriptions.error);
-        throw transcriptions.error;
-      }
-
-      const subfoldersWithContents = await Promise.all(
-        subfolders.data.map(async (subfolder) => {
-          console.log('Recursively fetching contents for subfolder:', subfolder.name, subfolder.id);
-          const contents = await fetchFolderContents(subfolder.id);
-          return { ...subfolder, ...contents };
-        })
-      );
-
-      console.log('Folder contents fetched:', {
-        folderId,
-        subfolders: subfoldersWithContents,
-        transcriptions: transcriptions.data
-      });
-
-      return {
-        subfolders: subfoldersWithContents,
-        transcriptions: transcriptions.data as Transcription[],
-      };
-    } catch (error) {
-      console.error('Error in fetchFolderContents:', error);
-      throw error;
-    }
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      description: "Texte copié dans le presse-papier",
+    });
   };
 
-  const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) {
-      toast({
-        variant: "destructive",
-        description: "Le nom du dossier ne peut pas être vide",
-      });
-      return;
-    }
-
+  const handleDownload = async (filePath: string, filename: string) => {
     try {
-      console.log('Creating new folder:', {
-        name: newFolderName,
-        parent_id: selectedFolder
-      });
-
-      const { data, error } = await supabase
-        .from('folders')
-        .insert({
-          name: newFolderName,
-          parent_id: selectedFolder,
-        })
-        .select()
-        .single();
+      console.log('Downloading file:', { filePath, filename });
+      const { data, error } = await supabase.storage
+        .from('audio')
+        .download(filePath);
 
       if (error) {
-        console.error('Error creating folder:', error);
+        console.error('Error downloading file:', error);
         throw error;
       }
 
-      console.log('New folder created:', data);
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
 
-      toast({
-        description: "Dossier créé avec succès",
-      });
-      setNewFolderName('');
-      setIsCreateFolderOpen(false);
-      refetchFolders();
+      console.log('File downloaded successfully');
     } catch (error) {
-      console.error('Error in handleCreateFolder:', error);
+      console.error('Error in handleDownload:', error);
       toast({
         variant: "destructive",
-        description: "Erreur lors de la création du dossier",
+        title: "Erreur",
+        description: "Impossible de télécharger le fichier audio",
       });
     }
   };
 
-  const handleMoveToFolder = async (transcriptionId: string, folderId: string) => {
-    console.log('Moving transcription to folder:', { transcriptionId, folderId });
-    try {
-      const { error } = await supabase
-        .from('transcriptions')
-        .update({ folder_id: folderId })
-        .eq('id', transcriptionId);
+  const filteredItems = historyItems?.filter(item =>
+    item.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.transcription?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-      if (error) throw error;
-
-      const transcription = unorganizedTranscriptions?.find(t => t.id === transcriptionId);
-      if (transcription?.audio_files?.id) {
-        console.log('Updating audio file folder:', transcription.audio_files.id);
-        const { error: audioError } = await supabase
-          .from('audio_files')
-          .update({ folder_id: folderId })
-          .eq('id', transcription.audio_files.id);
-
-        if (audioError) throw audioError;
-      }
-
-      toast({
-        description: "Fichier déplacé avec succès",
-      });
-      setIsFolderSelectOpen(false);
-      setSelectedTranscription(null);
-      queryClient.invalidateQueries({ queryKey: ['folders'] });
-      queryClient.invalidateQueries({ queryKey: ['transcriptions', 'unorganized'] });
-    } catch (error) {
-      console.error('Error moving file:', error);
-      toast({
-        variant: "destructive",
-        description: "Erreur lors du déplacement du fichier",
-      });
-    }
-  };
-
-  const renameFolderMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      console.log('Renaming folder:', { id, name });
-      const { error } = await supabase
-        .from('folders')
-        .update({ name })
-        .eq('id', id);
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['folders'] });
-      toast({
-        description: "Dossier renommé avec succès",
-      });
-    },
-    onError: (error) => {
-      console.error('Error renaming folder:', error);
-      toast({
-        variant: "destructive",
-        description: "Erreur lors du renommage du dossier",
-      });
-    },
-  });
-
-  const deleteFolderMutation = useMutation({
-    mutationFn: async (folderId: string) => {
-      console.log('Deleting folder:', folderId);
-      const { error } = await supabase
-        .from('folders')
-        .delete()
-        .eq('id', folderId);
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['folders'] });
-      toast({
-        description: "Dossier supprimé avec succès",
-      });
-    },
-    onError: (error) => {
-      console.error('Error deleting folder:', error);
-      toast({
-        variant: "destructive",
-        description: "Erreur lors de la suppression du dossier",
-      });
-    },
-  });
-
-  const toggleFolder = (folderId: string) => {
-    const newOpenFolders = new Set(openFolders);
-    if (newOpenFolders.has(folderId)) {
-      newOpenFolders.delete(folderId);
-    } else {
-      newOpenFolders.add(folderId);
-    }
-    setOpenFolders(newOpenFolders);
-  };
-
-  if (foldersLoading || transcriptionsLoading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
         <div className="text-lg text-muted-foreground">Chargement...</div>
@@ -296,90 +101,83 @@ export function TranscriptionHistory() {
     <div className="space-y-6 p-6">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="text-2xl font-bold">Base de données</CardTitle>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Search className="w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher dans les transcriptions..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="max-w-sm"
-              />
-            </div>
-            <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <FolderPlus className="w-4 h-4" />
-                  Nouveau dossier
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Créer un nouveau dossier</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <Input
-                    placeholder="Nom du dossier"
-                    value={newFolderName}
-                    onChange={(e) => setNewFolderName(e.target.value)}
-                  />
-                  <Button onClick={handleCreateFolder} className="w-full">
-                    Créer
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+          <CardTitle className="text-2xl font-bold">Historique</CardTitle>
+          <div className="flex items-center space-x-2">
+            <Search className="w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher dans l'historique..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-sm"
+            />
           </div>
         </CardHeader>
-        <Separator className="mb-6" />
-        <CardContent className="space-y-6">
-          {folders?.map((folder) => (
-            <FolderTree
-              key={folder.id}
-              folder={folder}
-              searchTerm={searchTerm}
-              onMoveToFolder={(transcriptionId) => {
-                setSelectedTranscription(transcriptionId);
-                setIsFolderSelectOpen(true);
-              }}
-              onRenameFolder={(id, name) => renameFolderMutation.mutate({ id, name })}
-              onDeleteFolder={(id) => deleteFolderMutation.mutate(id)}
-              openFolders={openFolders}
-              onToggleFolder={toggleFolder}
-            />
-          ))}
-
-          {unorganizedTranscriptions && unorganizedTranscriptions.length > 0 && (
-            <div className="rounded-lg border bg-card p-6">
-              <div className="font-medium text-lg mb-4">Fichiers non classés</div>
-              <FolderContents
-                transcriptions={unorganizedTranscriptions}
-                onMoveToFolder={(transcriptionId) => {
-                  setSelectedTranscription(transcriptionId);
-                  setIsFolderSelectOpen(true);
-                }}
-                searchTerm={searchTerm}
-                folderId={null}
-              />
-            </div>
-          )}
+        <CardContent>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fichier</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Transcription</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!filteredItems?.length ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      Aucun fichier trouvé
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="flex items-center gap-2">
+                        <FileAudio className="w-4 h-4" />
+                        {item.filename}
+                      </TableCell>
+                      <TableCell>
+                        {format(new Date(item.created_at), 'PPP', { locale: fr })}
+                      </TableCell>
+                      <TableCell>
+                        {item.file_type === 'to_convert' ? 'À convertir' :
+                         item.file_type === 'converted' ? 'Converti' : 'Transcription'}
+                      </TableCell>
+                      <TableCell className="max-w-md truncate">
+                        {item.transcription}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          {item.transcription && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => handleCopy(item.transcription!)}
+                              title="Copier la transcription"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleDownload(item.file_path, item.filename)}
+                            title="Télécharger l'audio"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
-
-      <FolderSelect
-        folders={folders || []}
-        isOpen={isFolderSelectOpen}
-        onClose={() => {
-          setIsFolderSelectOpen(false);
-          setSelectedTranscription(null);
-        }}
-        onSelect={(folderId) => {
-          if (selectedTranscription) {
-            handleMoveToFolder(selectedTranscription, folderId);
-          }
-        }}
-      />
     </div>
   );
 }
