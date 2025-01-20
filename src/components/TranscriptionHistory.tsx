@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Table,
@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { FolderSelect } from './FolderSelect';
 
 type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
   audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
@@ -38,7 +39,10 @@ export function TranscriptionHistory() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
+  const [selectedTranscription, setSelectedTranscription] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch folders and their contents
   const { data: folders, isLoading: foldersLoading, refetch: refetchFolders } = useQuery({
@@ -185,6 +189,49 @@ export function TranscriptionHistory() {
     }
   };
 
+  const handleMoveToFolder = async (transcriptionId: string, folderId: string) => {
+    console.log('Moving transcription to folder:', { transcriptionId, folderId });
+    const { error } = await supabase
+      .from('transcriptions')
+      .update({ folder_id: folderId })
+      .eq('id', transcriptionId);
+
+    if (error) {
+      console.error('Error moving transcription:', error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors du déplacement de la transcription",
+      });
+      return;
+    }
+
+    // Also move the associated audio file
+    const transcription = unorganizedTranscriptions?.find(t => t.id === transcriptionId);
+    if (transcription?.audio_files?.id) {
+      const { error: audioError } = await supabase
+        .from('audio_files')
+        .update({ folder_id: folderId })
+        .eq('id', transcription.audio_files.id);
+
+      if (audioError) {
+        console.error('Error moving audio file:', audioError);
+        toast({
+          variant: "destructive",
+          description: "Erreur lors du déplacement du fichier audio",
+        });
+        return;
+      }
+    }
+
+    toast({
+      description: "Fichier déplacé avec succès",
+    });
+    setIsFolderSelectOpen(false);
+    setSelectedTranscription(null);
+    queryClient.invalidateQueries({ queryKey: ['folders'] });
+    queryClient.invalidateQueries({ queryKey: ['transcriptions', 'unorganized'] });
+  };
+
   const renderFolderContents = (folder: Folder) => {
     const filteredTranscriptions = folder.transcriptions?.filter(t =>
       t.transcription.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -233,36 +280,7 @@ export function TranscriptionHistory() {
                       {t.transcription}
                     </TableCell>
                     <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => handleCopy(t.transcription)}
-                          title="Copier la transcription"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
-                          title="Télécharger l'audio"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              Déplacer vers...
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                      {renderTranscriptionActions(t)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -273,6 +291,42 @@ export function TranscriptionHistory() {
       </div>
     );
   };
+
+  const renderTranscriptionActions = (t: Transcription) => (
+    <div className="flex space-x-2">
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => handleCopy(t.transcription)}
+        title="Copier la transcription"
+      >
+        <Copy className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
+        title="Télécharger l'audio"
+      >
+        <Download className="h-4 w-4" />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => {
+            setSelectedTranscription(t.id);
+            setIsFolderSelectOpen(true);
+          }}>
+            Déplacer vers...
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
 
   if (foldersLoading || transcriptionsLoading) {
     return <div className="flex justify-center p-8">Chargement...</div>;
@@ -353,36 +407,7 @@ export function TranscriptionHistory() {
                       {t.transcription}
                     </TableCell>
                     <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => handleCopy(t.transcription)}
-                          title="Copier la transcription"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
-                          title="Télécharger l'audio"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              Déplacer vers...
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
+                      {renderTranscriptionActions(t)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -391,6 +416,20 @@ export function TranscriptionHistory() {
           </div>
         )}
       </div>
+
+      <FolderSelect
+        folders={folders || []}
+        isOpen={isFolderSelectOpen}
+        onClose={() => {
+          setIsFolderSelectOpen(false);
+          setSelectedTranscription(null);
+        }}
+        onSelect={(folderId) => {
+          if (selectedTranscription) {
+            handleMoveToFolder(selectedTranscription, folderId);
+          }
+        }}
+      />
     </div>
   );
 }
