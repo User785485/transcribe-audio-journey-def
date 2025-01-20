@@ -20,9 +20,10 @@ export function TranscriptionHistory() {
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
 
-  const { data: transcriptions, isLoading } = useQuery({
+  const { data: transcriptions, isLoading, error } = useQuery({
     queryKey: ['transcriptions'],
     queryFn: async () => {
+      console.log('Fetching transcriptions...');
       const { data, error } = await supabase
         .from('transcriptions')
         .select(`
@@ -35,10 +36,24 @@ export function TranscriptionHistory() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching transcriptions:', error);
+        throw error;
+      }
+      
+      console.log('Transcriptions fetched:', data);
       return data;
     },
   });
+
+  if (error) {
+    console.error('Query error:', error);
+    return (
+      <div className="p-4 text-red-500">
+        Une erreur est survenue lors du chargement des transcriptions
+      </div>
+    );
+  }
 
   const filteredTranscriptions = transcriptions?.filter(t => 
     t.transcription.toLowerCase().includes(searchTerm.toLowerCase()) ||
