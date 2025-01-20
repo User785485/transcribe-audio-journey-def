@@ -54,21 +54,6 @@ serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-    // Verify bucket exists
-    console.log('🔍 Verifying audio bucket...');
-    const { data: buckets, error: bucketsError } = await supabaseAdmin.storage.listBuckets();
-    
-    if (bucketsError) {
-      console.error('❌ Failed to list buckets:', bucketsError);
-      throw new Error('Erreur d\'accès au stockage');
-    }
-
-    const audioBucket = buckets?.find(b => b.name === 'audio');
-    if (!audioBucket) {
-      console.error('❌ Audio bucket not found in:', buckets?.map(b => b.name));
-      throw new Error('Configuration de stockage invalide');
-    }
-
     // Store file
     const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
     console.log('📤 Uploading file to:', filePath);
