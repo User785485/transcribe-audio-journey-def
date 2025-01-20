@@ -3,15 +3,15 @@ import { DropZone } from "./DropZone";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileAudio, Copy, Download, FolderInput } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { FileAudio, Copy, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { FolderSelect } from "./FolderSelect";
 
 export const SUPPORTED_FORMATS = {
   'audio/flac': ['.flac'],
@@ -28,6 +28,8 @@ export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
 
 export function TranscriptionUploader() {
   const [transcriptionProgress, setTranscriptionProgress] = useState([]);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -129,7 +131,21 @@ export function TranscriptionUploader() {
     });
   };
 
-  const { data: historyItems, isLoading: isHistoryLoading } = useQuery({
+  const { data: folders } = useQuery({
+    queryKey: ['folders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('folders')
+        .select('*')
+        .is('parent_id', null)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: historyItems, isLoading: isHistoryLoading, refetch } = useQuery({
     queryKey: ['transcription-history'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -172,6 +188,67 @@ export function TranscriptionUploader() {
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de télécharger le fichier audio",
+      });
+    }
+  };
+
+  const handleMoveToFolder = async (folderId: string) => {
+    if (!selectedItemId) return;
+
+    try {
+      console.log('Moving transcription to folder:', { selectedItemId, folderId });
+      
+      // Get the history item
+      const historyItem = historyItems?.find(item => item.id === selectedItemId);
+      if (!historyItem) throw new Error('Item not found');
+      if (!historyItem.transcription) throw new Error('No transcription found');
+
+      // Get the folder name
+      const { data: folderData } = await supabase
+        .from('folders')
+        .select('name')
+        .eq('id', folderId)
+        .single();
+
+      if (!folderData) throw new Error('Folder not found');
+
+      // Create a text file in the folder with the transcription
+      const transcriptionFileName = `${historyItem.filename.split('.')[0]}_transcription.txt`;
+      const transcriptionPath = `${folderId}/${transcriptionFileName}`;
+
+      // Store the transcription text file
+      const transcriptionBlob = new Blob([historyItem.transcription], { type: 'text/plain' });
+      const { error: storageError } = await supabase.storage
+        .from('audio')
+        .upload(transcriptionPath, transcriptionBlob, {
+          contentType: 'text/plain',
+          upsert: true
+        });
+
+      if (storageError) throw storageError;
+
+      // Update the history item with the folder name
+      const { error: historyError } = await supabase
+        .from('history')
+        .update({ folder_name: folderData.name })
+        .eq('id', selectedItemId);
+
+      if (historyError) throw historyError;
+
+      toast({
+        description: "Transcription déplacée avec succès",
+      });
+
+      // Refresh the data
+      refetch();
+
+      setIsFolderSelectOpen(false);
+      setSelectedItemId(null);
+    } catch (error) {
+      console.error('Error moving transcription to folder:', error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors du déplacement de la transcription",
       });
     }
   };
@@ -299,6 +376,19 @@ export function TranscriptionUploader() {
                           >
                             <Download className="h-4 w-4" />
                           </Button>
+                          {item.transcription && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedItemId(item.id);
+                                setIsFolderSelectOpen(true);
+                              }}
+                              title="Déplacer la transcription vers un dossier"
+                            >
+                              <FolderInput className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -309,6 +399,16 @@ export function TranscriptionUploader() {
           </div>
         </CardContent>
       </Card>
+
+      <FolderSelect
+        folders={folders || []}
+        isOpen={isFolderSelectOpen}
+        onClose={() => {
+          setIsFolderSelectOpen(false);
+          setSelectedItemId(null);
+        }}
+        onSelect={handleMoveToFolder}
+      />
     </div>
   );
 }
