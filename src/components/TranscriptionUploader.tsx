@@ -1,11 +1,16 @@
 import { useState, useCallback } from "react";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { DropZone } from "./DropZone";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
-import { DropZone } from "./DropZone";
-import { useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
+import { FileAudio, Copy, Download } from "lucide-react";
 
 export const SUPPORTED_FORMATS = {
   'audio/flac': ['.flac'],
@@ -18,23 +23,13 @@ export const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus']
 };
 
-const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
-
-interface TranscriptionProgress {
-  id: string;
-  filename: string;
-  progress: number;
-  status: 'pending' | 'transcribing' | 'completed' | 'error';
-  transcription?: string;
-  error?: string;
-}
+export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
 
 export function TranscriptionUploader() {
-  const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress[]>([]);
+  const [transcriptionProgress, setTranscriptionProgress] = useState([]);
   const { toast } = useToast();
-  const navigate = useNavigate();
 
-  const processFile = async (file: File) => {
+  const processFile = async (file) => {
     const id = crypto.randomUUID();
     
     if (file.size > MAX_TRANSCRIPTION_SIZE) {
@@ -98,19 +93,12 @@ export function TranscriptionUploader() {
     } catch (error) {
       console.error('❌ Erreur:', error);
       
-      // Afficher plus de détails sur l'erreur
       let errorMessage = 'Une erreur est survenue';
       if (error instanceof Error) {
         errorMessage = error.message;
         console.error('Stack trace:', error.stack);
       }
       
-      // Si l'erreur vient de l'API Edge Function
-      if ('error' in error && typeof error.error === 'object') {
-        console.error('Détails de l\'erreur Edge Function:', error.error);
-        errorMessage = error.error.message || errorMessage;
-      }
-
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
           ...p,
@@ -128,15 +116,62 @@ export function TranscriptionUploader() {
     }
   };
 
-  const handleDrop = useCallback((acceptedFiles: File[]) => {
+  const handleDrop = useCallback((acceptedFiles) => {
     acceptedFiles.forEach(processFile);
   }, []);
 
-  const handleCopyTranscription = (transcription: string) => {
+  const handleCopyTranscription = (transcription) => {
     navigator.clipboard.writeText(transcription);
     toast({
       description: "Transcription copiée dans le presse-papier",
     });
+  };
+
+  const { data: historyItems, isLoading: isHistoryLoading } = useQuery({
+    queryKey: ['transcription-history'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('history')
+        .select('*')
+        .eq('file_type', 'transcription')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      description: "Texte copié dans le presse-papier",
+    });
+  };
+
+  const handleDownload = async (filePath, filename) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('audio')
+        .download(filePath);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible de télécharger le fichier audio",
+      });
+    }
   };
 
   return (
@@ -144,7 +179,7 @@ export function TranscriptionUploader() {
       <div className="text-center space-y-2">
         <h2 className="text-2xl font-bold">Nouvelle transcription</h2>
         <p className="text-muted-foreground">
-          Déposez vos fichiers audio ici. Les fichiers de plus de 25MB seront automatiquement redirigés vers l'outil de découpage.
+          Déposez vos fichiers audio ici (25MB maximum). Pour les fichiers plus volumineux, utilisez l'outil de découpage.
         </p>
       </div>
 
@@ -200,6 +235,78 @@ export function TranscriptionUploader() {
           )}
         </div>
       ))}
+
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle>Dernières transcriptions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fichier</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Transcription</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isHistoryLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                    </TableCell>
+                  </TableRow>
+                ) : !historyItems?.length ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                      Aucune transcription trouvée
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  historyItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="flex items-center gap-2">
+                        <FileAudio className="w-4 h-4" />
+                        {item.filename}
+                      </TableCell>
+                      <TableCell>
+                        {format(new Date(item.created_at), 'PPP', { locale: fr })}
+                      </TableCell>
+                      <TableCell className="max-w-md truncate">
+                        {item.transcription}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          {item.transcription && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => handleCopy(item.transcription!)}
+                              title="Copier la transcription"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleDownload(item.file_path, item.filename)}
+                            title="Télécharger l'audio"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

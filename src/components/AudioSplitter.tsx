@@ -7,6 +7,14 @@ import { AudioAnalyzer } from "./AudioConverter/AudioAnalyzer";
 import { AudioChunker } from "./AudioConverter/AudioSplitter";
 import { ChunkDisplay } from "./AudioConverter/ChunkDisplay";
 import { TranscriptionDisplay } from "./AudioConverter/TranscriptionDisplay";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
+import { FileAudio, Download } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export const SUPPORTED_FORMATS = {
   'audio/flac': ['.flac'],
@@ -171,6 +179,46 @@ export function AudioSplitter() {
     });
   }, []);
 
+  const { data: splitHistory, isLoading: isHistoryLoading } = useQuery({
+    queryKey: ['split-history'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('history')
+        .select('*')
+        .eq('file_type', 'split')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const handleDownload = async (filePath: string, filename: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('audio')
+        .download(filePath);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible de télécharger le fichier audio",
+      });
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
       <div className="text-center space-y-2">
@@ -213,6 +261,62 @@ export function AudioSplitter() {
       {transcriptionProgress.map((item) => (
         <TranscriptionDisplay key={item.id} item={item} />
       ))}
+
+      <Card className="mt-8">
+        <CardHeader>
+          <CardTitle>Derniers fichiers découpés</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fichier</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isHistoryLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                    </TableCell>
+                  </TableRow>
+                ) : !splitHistory?.length ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                      Aucun fichier découpé trouvé
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  splitHistory.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="flex items-center gap-2">
+                        <FileAudio className="w-4 h-4" />
+                        {item.filename}
+                      </TableCell>
+                      <TableCell>
+                        {format(new Date(item.created_at), 'PPP', { locale: fr })}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleDownload(item.file_path, item.filename)}
+                          title="Télécharger l'audio"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

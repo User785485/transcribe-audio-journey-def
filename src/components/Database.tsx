@@ -4,11 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Folder, File, Upload } from "lucide-react";
+import { Folder, Upload } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 
 export const Database = () => {
   const [newFolderName, setNewFolderName] = useState("");
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -19,6 +20,21 @@ export const Database = () => {
         .from("folders")
         .select("*")
         .is("parent_id", null)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: selectedFolderFiles } = useQuery({
+    queryKey: ["folder-files", selectedFolderId],
+    enabled: !!selectedFolderId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("audio_files")
+        .select("*")
+        .eq("folder_id", selectedFolderId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -52,6 +68,10 @@ export const Database = () => {
 
   const uploadFileMutation = useMutation({
     mutationFn: async ({ file, folderId }: { file: File, folderId?: string }) => {
+      if (!folderId) {
+        throw new Error("Veuillez sélectionner un dossier");
+      }
+
       const fileExt = file.name.split('.').pop()?.toLowerCase();
       const isAudio = ['mp3', 'wav', 'm4a', 'ogg'].includes(fileExt || '');
       const isText = fileExt === 'txt';
@@ -79,7 +99,7 @@ export const Database = () => {
       if (dbError) throw dbError;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["audio_files"] });
+      queryClient.invalidateQueries({ queryKey: ["folder-files"] });
       toast({
         description: "Fichier uploadé avec succès",
       });
@@ -95,7 +115,7 @@ export const Database = () => {
 
   const onDrop = async (acceptedFiles: File[]) => {
     for (const file of acceptedFiles) {
-      await uploadFileMutation.mutate({ file });
+      await uploadFileMutation.mutate({ file, folderId: selectedFolderId });
     }
   };
 
@@ -104,7 +124,8 @@ export const Database = () => {
     accept: {
       'audio/*': ['.mp3', '.wav', '.m4a', '.ogg'],
       'text/plain': ['.txt']
-    }
+    },
+    disabled: !selectedFolderId
   });
 
   const handleCreateFolder = () => {
@@ -137,32 +158,53 @@ export const Database = () => {
         </Button>
       </div>
 
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-          isDragActive ? "border-primary bg-primary/10" : "border-muted"
-        }`}
-      >
-        <input {...getInputProps()} />
-        <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-        <p className="text-muted-foreground">
-          {isDragActive
-            ? "Déposez les fichiers ici"
-            : "Glissez et déposez des fichiers audio (.mp3, .wav, .m4a, .ogg) ou texte (.txt), ou cliquez pour sélectionner"}
-        </p>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {folders?.map((folder) => (
           <div
             key={folder.id}
-            className="p-4 border rounded-lg flex items-center gap-3 cursor-pointer hover:bg-accent transition-colors"
+            className={`p-4 border rounded-lg flex items-center gap-3 cursor-pointer hover:bg-accent transition-colors ${
+              selectedFolderId === folder.id ? 'bg-accent' : ''
+            }`}
+            onClick={() => setSelectedFolderId(folder.id)}
           >
             <Folder className="w-6 h-6 text-blue-500" />
             <span className="font-medium">{folder.name}</span>
           </div>
         ))}
       </div>
+
+      {selectedFolderId && (
+        <div
+          {...getRootProps()}
+          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+            isDragActive ? "border-primary bg-primary/10" : "border-muted"
+          }`}
+        >
+          <input {...getInputProps()} />
+          <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+          <p className="text-muted-foreground">
+            {isDragActive
+              ? "Déposez les fichiers ici"
+              : "Glissez et déposez des fichiers audio (.mp3, .wav, .m4a, .ogg) ou texte (.txt), ou cliquez pour sélectionner"}
+          </p>
+        </div>
+      )}
+
+      {selectedFolderFiles && selectedFolderFiles.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="font-medium">Fichiers dans ce dossier :</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {selectedFolderFiles.map((file) => (
+              <div key={file.id} className="p-4 border rounded-lg">
+                <p className="truncate">{file.filename}</p>
+                <p className="text-sm text-muted-foreground">
+                  {format(new Date(file.created_at), 'PPP', { locale: fr })}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}
