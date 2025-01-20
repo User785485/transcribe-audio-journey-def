@@ -32,7 +32,4 @@ supabase
     } else {
       console.log('✅ Supabase connection test successful');
     }
-  })
-  .catch(error => {
-    console.error('❌ Critical Supabase connection error:', error);
   });
