@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Database } from '@/integrations/supabase/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { FileAudio, Copy, Download, MoreVertical, Plus } from 'lucide-react';
+import { FileAudio, Copy, Download, MoreVertical, Plus, FolderInput } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useQueryClient } from '@tanstack/react-query';
 import { useDropzone } from 'react-dropzone';
 import { SUPPORTED_FORMATS } from '../../components/TranscriptionUploader';
+import { FolderSelect } from '../FolderSelect';
+import { useQuery } from '@tanstack/react-query';
 
 type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
   audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
@@ -29,7 +31,54 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("to_convert");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
+  const [selectedTranscriptionId, setSelectedTranscriptionId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const { data: folders } = useQuery({
+    queryKey: ['folders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('folders')
+        .select('*')
+        .is('parent_id', null)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const handleMoveToFolder = async (folderId: string) => {
+    if (!selectedTranscriptionId) return;
+
+    try {
+      const transcription = transcriptions.find(t => t.id === selectedTranscriptionId);
+      if (!transcription?.audio_files) throw new Error('Audio file not found');
+
+      const { error: audioFileError } = await supabase
+        .from('audio_files')
+        .update({ folder_id: folderId })
+        .eq('id', transcription.audio_files.id);
+
+      if (audioFileError) throw audioFileError;
+
+      toast({
+        description: "Fichier déplacé avec succès",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      queryClient.invalidateQueries({ queryKey: ['transcriptions'] });
+      setIsFolderSelectOpen(false);
+      setSelectedTranscriptionId(null);
+    } catch (error) {
+      console.error('Error moving file to folder:', error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors du déplacement du fichier",
+      });
+    }
+  };
 
   const onDrop = async (acceptedFiles: File[]) => {
     try {
@@ -222,18 +271,17 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
                             >
                               <Download className="h-4 w-4" />
                             </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => onMoveToFolder(t.id)}>
-                                  Déplacer vers...
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedTranscriptionId(t.id);
+                                setIsFolderSelectOpen(true);
+                              }}
+                              title="Déplacer vers un dossier"
+                            >
+                              <FolderInput className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -245,6 +293,16 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
           </TabsContent>
         </Tabs>
       </div>
+
+      <FolderSelect
+        folders={folders || []}
+        isOpen={isFolderSelectOpen}
+        onClose={() => {
+          setIsFolderSelectOpen(false);
+          setSelectedTranscriptionId(null);
+        }}
+        onSelect={handleMoveToFolder}
+      />
     </div>
   );
 }
