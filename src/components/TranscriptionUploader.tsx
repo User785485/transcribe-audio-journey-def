@@ -66,13 +66,22 @@ export function TranscriptionUploader() {
         } : p
       ));
 
+      console.log('Sending file to transcribe-simple function:', {
+        filename: file.name,
+        size: file.size,
+        type: file.type
+      });
+
       const { data, error } = await supabase.functions.invoke('transcribe-simple', {
         body: formData,
       });
 
       if (error) {
+        console.error('Transcription error:', error);
         throw new Error(error.message || 'Une erreur est survenue');
       }
+
+      console.log('Transcription response:', data);
 
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {

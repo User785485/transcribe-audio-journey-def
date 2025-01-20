@@ -7,8 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const WHISPER_SUPPORTED_FORMATS = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -42,15 +40,6 @@ serve(async (req) => {
       size: audioFile.size
     });
 
-    // Get file extension from name
-    const fileExtension = audioFile.name.split('.').pop()?.toLowerCase();
-    console.log('File extension:', fileExtension);
-
-    if (!fileExtension || !WHISPER_SUPPORTED_FORMATS.includes(fileExtension)) {
-      console.error('Unsupported file format:', fileExtension);
-      throw new Error(`Format de fichier non supporté. Formats supportés: ${WHISPER_SUPPORTED_FORMATS.join(', ')}`);
-    }
-
     // Prepare file for Whisper API
     const whisperFormData = new FormData();
     whisperFormData.append('file', audioFile);
@@ -78,7 +67,7 @@ serve(async (req) => {
     console.log('Transcription received:', transcription.substring(0, 100) + '...');
 
     // Store file and transcription
-    const filePath = `public/${crypto.randomUUID()}.${fileExtension}`;
+    const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
 
     console.log('Uploading file to Storage...');
     const supabaseAdmin = createClient(
