@@ -14,38 +14,81 @@ export type Database = {
           created_at: string
           file_path: string
           filename: string
+          folder_id: string | null
           id: string
         }
         Insert: {
           created_at?: string
           file_path: string
           filename: string
+          folder_id?: string | null
           id?: string
         }
         Update: {
           created_at?: string
           file_path?: string
           filename?: string
+          folder_id?: string | null
           id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "audio_files_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      folders: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          parent_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          parent_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          parent_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "folders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transcriptions: {
         Row: {
           audio_file_id: string
           created_at: string
+          folder_id: string | null
           id: string
           transcription: string
         }
         Insert: {
           audio_file_id: string
           created_at?: string
+          folder_id?: string | null
           id?: string
           transcription: string
         }
         Update: {
           audio_file_id?: string
           created_at?: string
+          folder_id?: string | null
           id?: string
           transcription?: string
         }
@@ -55,6 +98,13 @@ export type Database = {
             columns: ["audio_file_id"]
             isOneToOne: false
             referencedRelation: "audio_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transcriptions_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
             referencedColumns: ["id"]
           },
         ]

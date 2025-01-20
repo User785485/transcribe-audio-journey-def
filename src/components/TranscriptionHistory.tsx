@@ -13,57 +13,144 @@ import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Download, Copy, Search, FileAudio } from 'lucide-react';
+import { Download, Copy, Search, FileAudio, FolderPlus, Folder, ChevronRight, ChevronDown, MoreVertical } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Database } from '@/integrations/supabase/types';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
   audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
 };
 
+type Folder = Database['public']['Tables']['folders']['Row'] & {
+  transcriptions: Transcription[];
+  subfolders: Folder[];
+};
+
 export function TranscriptionHistory() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const { toast } = useToast();
 
-  const { data: transcriptions, isLoading, error } = useQuery({
-    queryKey: ['transcriptions'],
+  // Fetch folders and their contents
+  const { data: folders, isLoading: foldersLoading, refetch: refetchFolders } = useQuery({
+    queryKey: ['folders'],
     queryFn: async () => {
-      console.log('Fetching transcriptions...');
+      console.log('Fetching folders...');
+      const { data: foldersData, error: foldersError } = await supabase
+        .from('folders')
+        .select('*')
+        .is('parent_id', null)
+        .order('name');
+
+      if (foldersError) throw foldersError;
+
+      // Fetch subfolders and contents recursively
+      const foldersWithContents = await Promise.all(
+        foldersData.map(async (folder) => {
+          const contents = await fetchFolderContents(folder.id);
+          return { ...folder, ...contents };
+        })
+      );
+
+      console.log('Folders fetched:', foldersWithContents);
+      return foldersWithContents;
+    },
+  });
+
+  // Fetch transcriptions that are not in any folder
+  const { data: unorganizedTranscriptions, isLoading: transcriptionsLoading } = useQuery({
+    queryKey: ['transcriptions', 'unorganized'],
+    queryFn: async () => {
+      console.log('Fetching unorganized transcriptions...');
       const { data, error } = await supabase
         .from('transcriptions')
         .select(`
           *,
-          audio_files (
-            filename,
-            created_at,
-            file_path
-          )
+          audio_files (*)
         `)
+        .is('folder_id', null)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching transcriptions:', error);
-        throw error;
-      }
-      
-      console.log('Transcriptions fetched:', data);
+      if (error) throw error;
+      console.log('Unorganized transcriptions:', data);
       return data as Transcription[];
     },
   });
 
-  if (error) {
-    console.error('Query error:', error);
-    return (
-      <div className="p-4 text-red-500">
-        Une erreur est survenue lors du chargement des transcriptions
-      </div>
-    );
-  }
+  const fetchFolderContents = async (folderId: string) => {
+    const [subfolders, transcriptions] = await Promise.all([
+      supabase
+        .from('folders')
+        .select('*')
+        .eq('parent_id', folderId)
+        .order('name'),
+      supabase
+        .from('transcriptions')
+        .select(`
+          *,
+          audio_files (*)
+        `)
+        .eq('folder_id', folderId)
+        .order('created_at', { ascending: false }),
+    ]);
 
-  const filteredTranscriptions = transcriptions?.filter(t => 
-    t.transcription.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.audio_files?.filename.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    if (subfolders.error) throw subfolders.error;
+    if (transcriptions.error) throw transcriptions.error;
+
+    const subfoldersWithContents = await Promise.all(
+      subfolders.data.map(async (subfolder) => {
+        const contents = await fetchFolderContents(subfolder.id);
+        return { ...subfolder, ...contents };
+      })
+    );
+
+    return {
+      subfolders: subfoldersWithContents,
+      transcriptions: transcriptions.data as Transcription[],
+    };
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) {
+      toast({
+        variant: "destructive",
+        description: "Le nom du dossier ne peut pas être vide",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('folders')
+      .insert({
+        name: newFolderName,
+        parent_id: selectedFolder,
+      });
+
+    if (error) {
+      console.error('Error creating folder:', error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors de la création du dossier",
+      });
+      return;
+    }
+
+    toast({
+      description: "Dossier créé avec succès",
+    });
+    setNewFolderName('');
+    setIsCreateFolderOpen(false);
+    refetchFolders();
+  };
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -98,69 +185,211 @@ export function TranscriptionHistory() {
     }
   };
 
-  if (isLoading) {
+  const renderFolderContents = (folder: Folder) => {
+    const filteredTranscriptions = folder.transcriptions?.filter(t =>
+      t.transcription.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.audio_files?.filename.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return (
+      <div className="space-y-4">
+        {folder.subfolders?.length > 0 && (
+          <div className="space-y-2">
+            {folder.subfolders.map((subfolder) => (
+              <div key={subfolder.id} className="pl-4">
+                <div className="flex items-center gap-2 p-2 hover:bg-accent rounded-lg cursor-pointer">
+                  <ChevronRight className="w-4 h-4" />
+                  <Folder className="w-4 h-4" />
+                  <span>{subfolder.name}</span>
+                </div>
+                {renderFolderContents(subfolder)}
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {filteredTranscriptions?.length > 0 && (
+          <div className="pl-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fichier</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Transcription</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTranscriptions.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="flex items-center gap-2">
+                      <FileAudio className="w-4 h-4" />
+                      {t.audio_files?.filename}
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(t.created_at), 'PPP', { locale: fr })}
+                    </TableCell>
+                    <TableCell className="max-w-md truncate">
+                      {t.transcription}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleCopy(t.transcription)}
+                          title="Copier la transcription"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
+                          title="Télécharger l'audio"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem>
+                              Déplacer vers...
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (foldersLoading || transcriptionsLoading) {
     return <div className="flex justify-center p-8">Chargement...</div>;
   }
 
   return (
     <div className="space-y-4 p-4">
-      <div className="flex items-center space-x-2">
-        <Search className="w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Rechercher dans les transcriptions..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
-        />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Search className="w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher dans les transcriptions..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
+        </div>
+        <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <FolderPlus className="w-4 h-4 mr-2" />
+              Nouveau dossier
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Créer un nouveau dossier</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Input
+                placeholder="Nom du dossier"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+              />
+              <Button onClick={handleCreateFolder}>
+                Créer
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Fichier</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Transcription</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredTranscriptions?.map((t) => (
-              <TableRow key={t.id}>
-                <TableCell className="flex items-center gap-2">
-                  <FileAudio className="w-4 h-4" />
-                  {t.audio_files?.filename}
-                </TableCell>
-                <TableCell>
-                  {format(new Date(t.created_at), 'PPP', { locale: fr })}
-                </TableCell>
-                <TableCell className="max-w-md truncate">
-                  {t.transcription}
-                </TableCell>
-                <TableCell>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => handleCopy(t.transcription)}
-                      title="Copier la transcription"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
-                      title="Télécharger l'audio"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        {folders?.map((folder) => (
+          <div key={folder.id} className="p-4">
+            <div className="flex items-center gap-2 p-2 hover:bg-accent rounded-lg cursor-pointer">
+              <ChevronDown className="w-4 h-4" />
+              <Folder className="w-4 h-4" />
+              <span className="font-medium">{folder.name}</span>
+            </div>
+            {renderFolderContents(folder)}
+          </div>
+        ))}
+
+        {unorganizedTranscriptions && unorganizedTranscriptions.length > 0 && (
+          <div className="p-4">
+            <div className="font-medium mb-4">Fichiers non classés</div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fichier</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Transcription</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {unorganizedTranscriptions.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell className="flex items-center gap-2">
+                      <FileAudio className="w-4 h-4" />
+                      {t.audio_files?.filename}
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(t.created_at), 'PPP', { locale: fr })}
+                    </TableCell>
+                    <TableCell className="max-w-md truncate">
+                      {t.transcription}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleCopy(t.transcription)}
+                          title="Copier la transcription"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
+                          title="Télécharger l'audio"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem>
+                              Déplacer vers...
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
     </div>
   );
