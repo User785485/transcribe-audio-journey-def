@@ -6,7 +6,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { TranscriptionUploader } from "./components/TranscriptionUploader";
-import { TranscriptionHistory } from "./components/TranscriptionHistory";
 import { Settings } from "./components/Settings";
 import { AudioSplitter } from "./components/AudioSplitter";
 import FileConverter from "./components/FileConverter";
@@ -16,28 +15,26 @@ import { Prompts } from "./components/Prompts";
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <TooltipProvider>
+  <ThemeProvider defaultTheme="dark" attribute="class">
+    <TooltipProvider>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<TranscriptionUploader />} />
+              <Route path="/split" element={<AudioSplitter />} />
+              <Route path="/convert" element={<FileConverter />} />
+              <Route path="/database" element={<Database />} />
+              <Route path="/prompts" element={<Prompts />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Layout>
+        </BrowserRouter>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<TranscriptionUploader />} />
-              <Route path="dashboard" element={<TranscriptionUploader />} />
-              <Route path="split" element={<AudioSplitter />} />
-              <Route path="convert" element={<FileConverter />} />
-              <Route path="history" element={<TranscriptionHistory />} />
-              <Route path="database" element={<Database />} />
-              <Route path="settings" element={<Settings />} />
-              <Route path="prompts" element={<Prompts />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
+      </QueryClientProvider>
+    </TooltipProvider>
+  </ThemeProvider>
 );
 
 export default App;

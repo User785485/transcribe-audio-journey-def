@@ -4,12 +4,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Folder, Upload } from "lucide-react";
+import { Folder, Upload, Plus, Search } from "lucide-react";
 import { useDropzone } from "react-dropzone";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 export const Database = () => {
   const [newFolderName, setNewFolderName] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -53,6 +64,7 @@ export const Database = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       setNewFolderName("");
+      setIsCreateFolderOpen(false);
       toast({
         description: "Dossier créé avec succès",
       });
@@ -139,27 +151,54 @@ export const Database = () => {
     createFolderMutation.mutate(newFolderName);
   };
 
+  const filteredFolders = folders?.filter(folder => 
+    folder.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   if (isLoading) {
     return <div className="p-4">Chargement...</div>;
   }
 
   return (
     <div className="p-4 space-y-6">
-      <div className="flex items-center gap-4">
-        <Input
-          placeholder="Nom du nouveau dossier"
-          value={newFolderName}
-          onChange={(e) => setNewFolderName(e.target.value)}
-          className="max-w-xs"
-        />
-        <Button onClick={handleCreateFolder}>
-          <Folder className="w-4 h-4 mr-2" />
-          Créer un dossier
-        </Button>
+      <div className="flex justify-between items-center">
+        <div className="relative w-64">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher un dossier..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+        
+        <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="w-4 h-4 mr-2" />
+              Nouveau dossier
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Créer un nouveau dossier</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Input
+                placeholder="Nom du dossier"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+              />
+              <Button onClick={handleCreateFolder} className="w-full">
+                Créer le dossier
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {folders?.map((folder) => (
+        {filteredFolders?.map((folder) => (
           <div
             key={folder.id}
             className={`p-4 border rounded-lg flex items-center gap-3 cursor-pointer hover:bg-accent transition-colors ${
