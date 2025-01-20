@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 
-const FileConverter = () => {
+export const FileConverter = () => {
   return (
     <div className="h-full w-full flex flex-col items-center justify-center">
       <h1 className="text-2xl font-bold mb-8">Convertisseur de Fichiers</h1>

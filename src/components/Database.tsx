@@ -1,67 +1,105 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Folder, File, Plus, Upload } from "lucide-react";
-import { useDropzone } from 'react-dropzone';
+import { Folder, File, Upload } from "lucide-react";
+import { useDropzone } from "react-dropzone";
 
-export function Database() {
-  const [newFolderName, setNewFolderName] = useState('');
-  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+export const Database = () => {
+  const [newFolderName, setNewFolderName] = useState("");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: folders, isLoading } = useQuery({
-    queryKey: ['folders'],
+    queryKey: ["folders"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('folders')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .from("folders")
+        .select("*")
+        .is("parent_id", null)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       return data;
     },
   });
 
-  const onDrop = async (acceptedFiles: File[]) => {
-    try {
-      for (const file of acceptedFiles) {
-        const filePath = `public/${crypto.randomUUID()}.${file.name.split('.').pop()}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('audio')
-          .upload(filePath, file);
-
-        if (uploadError) throw uploadError;
-
-        const { error: dbError } = await supabase
-          .from('audio_files')
-          .insert({
-            filename: file.name,
-            file_path: filePath,
-            file_type: 'to_convert'
-          });
-
-        if (dbError) throw dbError;
-      }
-
+  const createFolderMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const { data, error } = await supabase
+        .from("folders")
+        .insert([{ name }]);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      setNewFolderName("");
       toast({
-        description: "Fichier(s) ajouté(s) avec succès",
+        description: "Dossier créé avec succès",
       });
-    } catch (error) {
-      console.error('Erreur lors de l\'ajout du fichier:', error);
+    },
+    onError: (error) => {
+      console.error("Error creating folder:", error);
       toast({
         variant: "destructive",
-        description: "Erreur lors de l'ajout du fichier",
+        description: "Erreur lors de la création du dossier",
       });
+    },
+  });
+
+  const uploadFileMutation = useMutation({
+    mutationFn: async ({ file, folderId }: { file: File, folderId?: string }) => {
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+      const isAudio = ['mp3', 'wav', 'm4a', 'ogg'].includes(fileExt || '');
+      const isText = fileExt === 'txt';
+
+      if (!isAudio && !isText) {
+        throw new Error("Format de fichier non supporté");
+      }
+
+      const filePath = `${crypto.randomUUID()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from("audio")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { error: dbError } = await supabase
+        .from("audio_files")
+        .insert([{
+          filename: file.name,
+          file_path: filePath,
+          file_type: isAudio ? 'audio' : 'text',
+          folder_id: folderId
+        }]);
+
+      if (dbError) throw dbError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["audio_files"] });
+      toast({
+        description: "Fichier uploadé avec succès",
+      });
+    },
+    onError: (error) => {
+      console.error("Error uploading file:", error);
+      toast({
+        variant: "destructive",
+        description: error instanceof Error ? error.message : "Erreur lors de l'upload du fichier",
+      });
+    },
+  });
+
+  const onDrop = async (acceptedFiles: File[]) => {
+    for (const file of acceptedFiles) {
+      await uploadFileMutation.mutate({ file });
     }
   };
 
-  const { getRootProps, getInputProps } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'audio/*': ['.mp3', '.wav', '.m4a', '.ogg'],
@@ -69,94 +107,62 @@ export function Database() {
     }
   });
 
-  const handleCreateFolder = async () => {
-    try {
-      const { error } = await supabase
-        .from('folders')
-        .insert({ name: newFolderName });
-
-      if (error) throw error;
-
-      toast({
-        description: "Dossier créé avec succès",
-      });
-      setIsCreateFolderOpen(false);
-      setNewFolderName('');
-    } catch (error) {
-      console.error('Erreur lors de la création du dossier:', error);
+  const handleCreateFolder = () => {
+    if (!newFolderName.trim()) {
       toast({
         variant: "destructive",
-        description: "Erreur lors de la création du dossier",
+        description: "Le nom du dossier est requis",
       });
+      return;
     }
+    createFolderMutation.mutate(newFolderName);
   };
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <div className="text-lg text-muted-foreground">Chargement...</div>
-      </div>
-    );
+    return <div className="p-4">Chargement...</div>;
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle className="text-2xl font-bold">Base de données</CardTitle>
-          <div className="flex gap-2">
-            <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Nouveau dossier
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Créer un nouveau dossier</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <Input
-                    placeholder="Nom du dossier"
-                    value={newFolderName}
-                    onChange={(e) => setNewFolderName(e.target.value)}
-                  />
-                  <Button onClick={handleCreateFolder} className="w-full">
-                    Créer
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div {...getRootProps()} className="border-2 border-dashed rounded-lg p-6 cursor-pointer hover:border-primary transition-colors mb-6">
-            <input {...getInputProps()} />
-            <div className="text-center space-y-2">
-              <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
-              <p className="text-muted-foreground">
-                Glissez-déposez des fichiers ici, ou cliquez pour sélectionner
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Formats supportés : .mp3, .wav, .m4a, .ogg, .txt
-              </p>
-            </div>
-          </div>
+    <div className="p-4 space-y-6">
+      <div className="flex items-center gap-4">
+        <Input
+          placeholder="Nom du nouveau dossier"
+          value={newFolderName}
+          onChange={(e) => setNewFolderName(e.target.value)}
+          className="max-w-xs"
+        />
+        <Button onClick={handleCreateFolder}>
+          <Folder className="w-4 h-4 mr-2" />
+          Créer un dossier
+        </Button>
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {folders?.map((folder) => (
-              <div
-                key={folder.id}
-                className="flex items-center gap-2 p-4 rounded-lg border hover:bg-accent cursor-pointer"
-              >
-                <Folder className="h-5 w-5 text-blue-500" />
-                <span>{folder.name}</span>
-              </div>
-            ))}
+      <div
+        {...getRootProps()}
+        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+          isDragActive ? "border-primary bg-primary/10" : "border-muted"
+        }`}
+      >
+        <input {...getInputProps()} />
+        <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+        <p className="text-muted-foreground">
+          {isDragActive
+            ? "Déposez les fichiers ici"
+            : "Glissez et déposez des fichiers audio (.mp3, .wav, .m4a, .ogg) ou texte (.txt), ou cliquez pour sélectionner"}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {folders?.map((folder) => (
+          <div
+            key={folder.id}
+            className="p-4 border rounded-lg flex items-center gap-3 cursor-pointer hover:bg-accent transition-colors"
+          >
+            <Folder className="w-6 h-6 text-blue-500" />
+            <span className="font-medium">{folder.name}</span>
           </div>
-        </CardContent>
-      </Card>
+        ))}
+      </div>
     </div>
   );
-}
+};
