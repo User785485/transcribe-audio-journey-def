@@ -9,13 +9,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent } from "@/components/ui/card";
 import { useDropzone } from 'react-dropzone';
-import { SUPPORTED_FORMATS } from '../TranscriptionUploader';
+import { SUPPORTED_FORMATS } from '../../components/TranscriptionUploader';
 
 type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
   audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
@@ -25,15 +22,13 @@ interface FolderContentsProps {
   transcriptions: Transcription[];
   onMoveToFolder: (transcriptionId: string) => void;
   searchTerm: string;
-  folderId?: string;
+  folderId: string | null;
 }
 
 export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, folderId }: FolderContentsProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("to_convert");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newFileName, setNewFileName] = useState('');
-  const [newTranscription, setNewTranscription] = useState('');
   const queryClient = useQueryClient();
 
   const onDrop = async (acceptedFiles: File[]) => {
@@ -85,8 +80,7 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: SUPPORTED_FORMATS,
-    disabled: activeTab === 'transcription'
+    accept: SUPPORTED_FORMATS
   });
 
   const handleCopy = (text: string) => {
@@ -122,71 +116,6 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
     }
   };
 
-  const handleAddContent = async () => {
-    try {
-      if (activeTab === 'transcription' && !newTranscription) {
-        toast({
-          variant: "destructive",
-          description: "Veuillez entrer une transcription",
-        });
-        return;
-      }
-
-      if ((activeTab === 'to_convert' || activeTab === 'converted') && !newFileName) {
-        toast({
-          variant: "destructive",
-          description: "Veuillez entrer un nom de fichier",
-        });
-        return;
-      }
-
-      let audioFileId;
-      if (activeTab !== 'transcription') {
-        const { data: audioFile, error: audioError } = await supabase
-          .from('audio_files')
-          .insert({
-            filename: newFileName,
-            file_path: `manual/${newFileName}`,
-            file_type: activeTab,
-            folder_id: folderId
-          })
-          .select()
-          .single();
-
-        if (audioError) throw audioError;
-        audioFileId = audioFile.id;
-      }
-
-      if (activeTab === 'transcription') {
-        const { error: transcriptionError } = await supabase
-          .from('transcriptions')
-          .insert({
-            transcription: newTranscription,
-            folder_id: folderId,
-            audio_file_id: audioFileId
-          });
-
-        if (transcriptionError) throw transcriptionError;
-      }
-
-      toast({
-        description: "Contenu ajouté avec succès",
-      });
-      
-      setIsAddDialogOpen(false);
-      setNewFileName('');
-      setNewTranscription('');
-      queryClient.invalidateQueries({ queryKey: ['folders'] });
-      queryClient.invalidateQueries({ queryKey: ['transcriptions', 'unorganized'] });
-    } catch (error) {
-      console.error('Erreur lors de l\'ajout:', error);
-      toast({
-        variant: "destructive",
-        description: "Erreur lors de l'ajout du contenu",
-      });
-    }
-  };
-
   const filteredTranscriptions = transcriptions.filter(t =>
     (t.transcription?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.audio_files?.filename.toLowerCase().includes(searchTerm.toLowerCase())) &&
@@ -194,11 +123,11 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
   );
 
   return (
-    <Card className="mt-4">
-      <CardContent className="p-6">
-        <Tabs defaultValue="to_convert" value={activeTab} onValueChange={setActiveTab}>
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <Tabs defaultValue="to_convert" value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="flex justify-between items-center mb-6">
-            <TabsList className="grid w-[400px] grid-cols-3">
+            <TabsList>
               <TabsTrigger value="to_convert">À convertir</TabsTrigger>
               <TabsTrigger value="converted">Convertis</TabsTrigger>
               <TabsTrigger value="transcription">Transcriptions</TabsTrigger>
@@ -208,48 +137,20 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
                   <Plus className="h-4 w-4" />
-                  Ajouter {activeTab === 'transcription' ? 'une transcription' : 'un fichier'}
+                  Ajouter un fichier
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>
-                    Ajouter {activeTab === 'transcription' ? 'une transcription' : 'un fichier'}
+                    Ajouter un fichier
                   </DialogTitle>
-                  {activeTab !== 'transcription' && (
-                    <DialogDescription>
-                      Vous pouvez aussi glisser-déposer des fichiers directement dans la liste
-                    </DialogDescription>
-                  )}
                 </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  {activeTab === 'transcription' ? (
-                    <Textarea
-                      placeholder="Entrez la transcription..."
-                      value={newTranscription}
-                      onChange={(e) => setNewTranscription(e.target.value)}
-                      className="min-h-[200px]"
-                    />
-                  ) : (
-                    <div
-                      {...getRootProps()}
-                      className={`rounded-lg border-2 border-dashed p-6 transition-colors ${
-                        isDragActive ? 'border-primary bg-primary/10' : 'border-muted-foreground/25'
-                      }`}
-                    >
-                      <input {...getInputProps()} />
-                      <div className="text-center">
-                        <p className="text-sm text-muted-foreground">
-                          {isDragActive
-                            ? "Déposez les fichiers ici..."
-                            : "Glissez-déposez des fichiers audio ici, ou cliquez pour sélectionner"}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  <Button onClick={handleAddContent} className="w-full">
-                    Ajouter
-                  </Button>
+                <div {...getRootProps()} className="border-2 border-dashed rounded-lg p-6 cursor-pointer hover:border-primary transition-colors">
+                  <input {...getInputProps()} />
+                  <p className="text-center text-muted-foreground">
+                    {isDragActive ? "Déposez les fichiers ici..." : "Glissez-déposez des fichiers ici, ou cliquez pour sélectionner"}
+                  </p>
                 </div>
               </DialogContent>
             </Dialog>
@@ -258,12 +159,12 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
           {['to_convert', 'converted', 'transcription'].map((tabValue) => (
             <TabsContent key={tabValue} value={tabValue}>
               <div
-                {...(tabValue !== 'transcription' ? getRootProps() : {})}
+                {...getRootProps()}
                 className={`rounded-lg border-2 border-dashed transition-colors ${
                   isDragActive ? 'border-primary bg-primary/10' : 'border-border'
                 }`}
               >
-                {tabValue !== 'transcription' && <input {...getInputProps()} />}
+                <input {...getInputProps()} />
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -280,11 +181,7 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
                           {isDragActive ? (
                             "Déposez les fichiers ici..."
                           ) : (
-                            tabValue !== 'transcription' ? (
-                              "Glissez-déposez des fichiers ici ou utilisez le bouton Ajouter"
-                            ) : (
-                              "Aucun élément à afficher"
-                            )
+                            "Glissez-déposez des fichiers ici ou utilisez le bouton Ajouter"
                           )}
                         </TableCell>
                       </TableRow>
@@ -342,7 +239,7 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
             </TabsContent>
           ))}
         </Tabs>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
