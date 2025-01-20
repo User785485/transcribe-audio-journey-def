@@ -1,22 +1,43 @@
-import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 export function WhatsApp() {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    // Try to force iframe display
+    if (iframeRef.current) {
+      const iframe = iframeRef.current;
+      iframe.style.width = "100%";
+      iframe.style.height = "calc(100vh - 2rem)";
+      
+      // Try to bypass security headers
+      iframe.setAttribute("sandbox", "allow-same-origin allow-scripts allow-popups allow-forms");
+      iframe.setAttribute("loading", "eager");
+      iframe.setAttribute("importance", "high");
+    }
+  }, []);
+
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center">
-      <h1 className="text-2xl font-bold mb-8">WhatsApp Web</h1>
-      <div className="text-center">
-        <p className="text-muted-foreground mb-6">
-          Ouvrez WhatsApp Web dans un nouvel onglet pour accéder à vos conversations
-        </p>
-        <Button 
-          onClick={() => window.open("https://web.whatsapp.com/", "_blank")}
-          size="lg"
-          className="gap-2"
+    <div className="h-full w-full flex flex-col">
+      <h1 className="text-2xl font-bold mb-4">WhatsApp Web</h1>
+      
+      {/* Primary iframe attempt */}
+      <iframe
+        ref={iframeRef}
+        src="https://web.whatsapp.com"
+        className="w-full flex-1 border-2 border-gray-200 rounded-lg"
+        allow="camera; microphone; display-capture"
+      />
+
+      {/* Fallback message */}
+      <div className="mt-4 text-sm text-muted-foreground">
+        Si l'iframe ne s'affiche pas, vous pouvez toujours{" "}
+        <button
+          onClick={() => window.open("https://web.whatsapp.com", "_blank")}
+          className="text-primary hover:underline"
         >
-          <ExternalLink className="h-4 w-4" />
-          Ouvrir WhatsApp Web
-        </Button>
+          ouvrir WhatsApp Web dans un nouvel onglet
+        </button>
       </div>
     </div>
   );
