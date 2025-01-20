@@ -59,14 +59,27 @@ export const Database = () => {
     queryKey: ["folder-files", selectedFolderId],
     enabled: !!selectedFolderId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      console.log('Fetching files for folder:', selectedFolderId);
+      const { data: audioFiles, error: audioError } = await supabase
         .from("audio_files")
         .select("*")
         .eq("folder_id", selectedFolderId)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      return data;
+      if (audioError) throw audioError;
+
+      // Fetch text files (transcriptions) that were moved to this folder
+      const { data: textFiles, error: textError } = await supabase
+        .from("audio_files")
+        .select("*")
+        .eq("folder_id", selectedFolderId)
+        .eq("file_type", "text")
+        .order("created_at", { ascending: false });
+
+      if (textError) throw textError;
+
+      console.log('Files found:', { audioFiles, textFiles });
+      return [...(audioFiles || []), ...(textFiles || [])];
     },
   });
 
@@ -271,7 +284,7 @@ export const Database = () => {
         {filteredFolders?.map((folder) => (
           <div
             key={folder.id}
-            className={`p-4 border rounded-lg flex items-center gap-3 cursor-pointer hover:bg-accent transition-colors ${
+            className={`p-4 border rounded-lg flex items-center gap-3 cursor-pointer hover:bg-accent transition-colors group ${
               selectedFolderId === folder.id ? 'bg-accent' : ''
             }`}
             onClick={() => setSelectedFolderId(folder.id)}
@@ -344,6 +357,9 @@ export const Database = () => {
                 <p className="truncate">{file.filename}</p>
                 <p className="text-sm text-muted-foreground">
                   {format(new Date(file.created_at), 'PPP', { locale: fr })}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Type: {file.file_type === 'text' ? 'Transcription' : 'Audio'}
                 </p>
               </div>
             ))}
