@@ -38,15 +38,21 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
 
   const onDrop = async (acceptedFiles: File[]) => {
     try {
+      console.log('Files dropped:', acceptedFiles);
       for (const file of acceptedFiles) {
         const filePath = `public/${crypto.randomUUID()}.${file.name.split('.').pop()}`;
         
+        console.log('Uploading file to path:', filePath);
         const { error: uploadError } = await supabase.storage
           .from('audio')
           .upload(filePath, file);
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          throw uploadError;
+        }
 
+        console.log('File uploaded successfully, creating database entry');
         const { error: dbError } = await supabase
           .from('audio_files')
           .insert({
@@ -56,7 +62,10 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
             folder_id: folderId
           });
 
-        if (dbError) throw dbError;
+        if (dbError) {
+          console.error('Database error:', dbError);
+          throw dbError;
+        }
       }
 
       toast({
@@ -224,11 +233,21 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
                       className="min-h-[200px]"
                     />
                   ) : (
-                    <Input
-                      placeholder="Nom du fichier"
-                      value={newFileName}
-                      onChange={(e) => setNewFileName(e.target.value)}
-                    />
+                    <div
+                      {...getRootProps()}
+                      className={`rounded-lg border-2 border-dashed p-6 transition-colors ${
+                        isDragActive ? 'border-primary bg-primary/10' : 'border-muted-foreground/25'
+                      }`}
+                    >
+                      <input {...getInputProps()} />
+                      <div className="text-center">
+                        <p className="text-sm text-muted-foreground">
+                          {isDragActive
+                            ? "Déposez les fichiers ici..."
+                            : "Glissez-déposez des fichiers audio ici, ou cliquez pour sélectionner"}
+                        </p>
+                      </div>
+                    </div>
                   )}
                   <Button onClick={handleAddContent} className="w-full">
                     Ajouter
