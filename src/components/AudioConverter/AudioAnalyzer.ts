@@ -1,4 +1,5 @@
-import { AudioMetadata, SUPPORTED_FORMATS } from './types';
+import { AudioMetadata } from './types';
+import { SUPPORTED_FORMATS } from '../AudioSplitter';
 
 export class AudioAnalyzer {
   private audioContext: AudioContext;
@@ -16,7 +17,6 @@ export class AudioAnalyzer {
     });
 
     const format = this.detectFormat(file);
-    const needsConversion = !file.type.includes('audio/mpeg');
 
     let duration = 0;
     try {
@@ -33,7 +33,6 @@ export class AudioAnalyzer {
 
     console.log('Analysis results:', {
       format,
-      needsConversion,
       size: file.size,
       duration
     });
@@ -41,8 +40,7 @@ export class AudioAnalyzer {
     return {
       format,
       size: file.size,
-      duration,
-      needsConversion
+      duration
     };
   }
 
