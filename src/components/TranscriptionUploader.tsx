@@ -65,7 +65,7 @@ export function TranscriptionUploader() {
         } : p
       ));
 
-      console.log('Sending file to transcribe-simple function:', {
+      console.log('📤 Envoi du fichier pour transcription:', {
         filename: file.name,
         size: file.size,
         type: file.type
@@ -76,11 +76,11 @@ export function TranscriptionUploader() {
       });
 
       if (error) {
-        console.error('Transcription error:', error);
+        console.error('❌ Erreur de transcription:', error);
         throw new Error(error.message || 'Une erreur est survenue');
       }
 
-      console.log('Transcription response:', data);
+      console.log('✅ Réponse de transcription reçue:', data);
 
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
@@ -96,20 +96,34 @@ export function TranscriptionUploader() {
         description: `Le fichier ${file.name} a été transcrit avec succès.`,
       });
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error('❌ Erreur:', error);
+      
+      // Afficher plus de détails sur l'erreur
+      let errorMessage = 'Une erreur est survenue';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        console.error('Stack trace:', error.stack);
+      }
+      
+      // Si l'erreur vient de l'API Edge Function
+      if ('error' in error && typeof error.error === 'object') {
+        console.error('Détails de l\'erreur Edge Function:', error.error);
+        errorMessage = error.error.message || errorMessage;
+      }
+
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
           ...p,
           status: 'error',
           progress: 100,
-          error: error instanceof Error ? error.message : "Une erreur est survenue"
+          error: errorMessage
         } : p
       ));
       
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: `Erreur lors de la transcription de ${file.name}: ${error instanceof Error ? error.message : "Une erreur est survenue"}`,
+        description: `Erreur lors de la transcription de ${file.name}: ${errorMessage}`,
       });
     }
   };
@@ -179,7 +193,10 @@ export function TranscriptionUploader() {
           )}
 
           {item.status === 'error' && (
-            <p className="text-destructive">{item.error}</p>
+            <div className="text-destructive space-y-2">
+              <p className="font-medium">Erreur :</p>
+              <p className="text-sm">{item.error}</p>
+            </div>
           )}
         </div>
       ))}

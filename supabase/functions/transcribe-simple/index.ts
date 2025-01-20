@@ -9,11 +9,11 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('Received request:', req.method);
+  console.log('🚀 Function started:', req.method);
 
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    console.log('Handling CORS preflight request');
+    console.log('✅ Handling CORS preflight request');
     return new Response(null, { 
       headers: corsHeaders,
       status: 204
@@ -26,51 +26,57 @@ serve(async (req) => {
     }
 
     const formData = await req.formData();
-    console.log('FormData received');
+    console.log('📦 FormData received');
     
     const audioFile = formData.get('file');
     const language = 'fr';
 
     if (!audioFile || !(audioFile instanceof File)) {
-      console.error('Invalid file:', audioFile);
+      console.error('❌ Invalid file:', audioFile);
       throw new Error('Aucun fichier audio fourni ou format invalide');
     }
 
-    console.log('Audio file received:', {
+    console.log('🎵 Audio file details:', {
       name: audioFile.name,
       type: audioFile.type,
       size: audioFile.size
     });
 
-    // Initialize Supabase client with explicit error handling
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // Initialize Supabase client
+    console.log('🔄 Initializing Supabase client...');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    // Verify bucket exists and is accessible
-    console.log('Verifying audio bucket...');
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase credentials');
+      throw new Error('Configuration Supabase manquante');
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+
+    // Verify bucket exists
+    console.log('🔍 Verifying audio bucket...');
     const { data: buckets, error: bucketsError } = await supabaseAdmin.storage.listBuckets();
     
     if (bucketsError) {
-      console.error('Failed to list buckets:', bucketsError);
+      console.error('❌ Failed to list buckets:', bucketsError);
       throw new Error('Erreur d\'accès au stockage');
     }
 
     const audioBucket = buckets?.find(b => b.name === 'audio');
     if (!audioBucket) {
-      console.error('Audio bucket not found in:', buckets?.map(b => b.name));
+      console.error('❌ Audio bucket not found in:', buckets?.map(b => b.name));
       throw new Error('Configuration de stockage invalide');
     }
 
-    // Store file in Supabase Storage with explicit path handling
+    // Store file
     const fileExtension = audioFile.name.split('.').pop()?.toLowerCase();
     if (!fileExtension) {
       throw new Error('Extension de fichier invalide');
     }
 
     const filePath = `public/${crypto.randomUUID()}.${fileExtension}`;
-    console.log('Attempting file upload to path:', filePath);
+    console.log('📤 Uploading file to:', filePath);
 
     const { error: storageError } = await supabaseAdmin.storage
       .from('audio')
@@ -80,40 +86,46 @@ serve(async (req) => {
       });
 
     if (storageError) {
-      console.error('Storage upload failed:', storageError);
+      console.error('❌ Storage upload failed:', storageError);
       throw new Error(`Erreur lors du stockage: ${storageError.message}`);
     }
 
-    console.log('File uploaded successfully to:', filePath);
+    console.log('✅ File uploaded successfully');
 
     // Prepare Whisper API request
+    console.log('🎙️ Preparing Whisper API request...');
     const whisperFormData = new FormData();
     whisperFormData.append('file', audioFile);
     whisperFormData.append('model', 'whisper-1');
     whisperFormData.append('language', language);
 
-    console.log('Calling Whisper API...');
+    const openaiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiKey) {
+      console.error('❌ Missing OpenAI API key');
+      throw new Error('Clé API OpenAI manquante');
+    }
 
-    // Call Whisper API with proper error handling
+    // Call Whisper API
+    console.log('🔄 Calling Whisper API...');
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Authorization': `Bearer ${openaiKey}`,
       },
       body: whisperFormData,
     });
 
     if (!whisperResponse.ok) {
       const errorText = await whisperResponse.text();
-      console.error('Whisper API error:', errorText);
+      console.error('❌ Whisper API error:', errorText);
       throw new Error(`Erreur de transcription: ${errorText}`);
     }
 
     const { text: transcription } = await whisperResponse.json();
-    console.log('Transcription received, length:', transcription.length);
+    console.log('✅ Transcription received, length:', transcription.length);
 
-    // Store audio file reference in database
-    console.log('Storing audio file reference...');
+    // Store audio file reference
+    console.log('💾 Storing audio file reference...');
     const { data: audioFileData, error: audioFileError } = await supabaseAdmin
       .from('audio_files')
       .insert({
@@ -124,29 +136,30 @@ serve(async (req) => {
       .single();
 
     if (audioFileError) {
-      console.error('Failed to store audio file reference:', audioFileError);
+      console.error('❌ Failed to store audio file reference:', audioFileError);
       throw new Error('Erreur lors de l\'enregistrement des métadonnées');
     }
 
-    // Store transcription with proper error handling
-    console.log('Storing transcription...');
+    console.log('✅ Audio file reference stored');
+
+    // Store transcription
+    console.log('💾 Storing transcription...');
     const { data: transcriptionData, error: transcriptionError } = await supabaseAdmin
       .from('transcriptions')
       .insert({
         audio_file_id: audioFileData.id,
-        transcription: transcription,
-        language: language,
-        status: 'completed'
+        transcription: transcription
       })
       .select()
       .single();
 
     if (transcriptionError) {
-      console.error('Failed to store transcription:', transcriptionError);
+      console.error('❌ Failed to store transcription:', transcriptionError);
       throw new Error('Erreur lors de l\'enregistrement de la transcription');
     }
 
-    console.log('All operations completed successfully');
+    console.log('✅ Transcription stored successfully');
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -164,11 +177,12 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in transcribe-simple function:', error);
+    console.error('❌ Error in transcribe-simple function:', error);
     return new Response(
       JSON.stringify({
         error: 'Une erreur est survenue lors de la transcription',
-        details: error.message
+        details: error.message,
+        stack: error.stack
       }),
       { 
         headers: { 
