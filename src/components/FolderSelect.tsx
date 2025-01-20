@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Folder, ChevronRight } from "lucide-react";
@@ -37,6 +37,9 @@ export function FolderSelect({ folders, isOpen, onClose, onSelect }: FolderSelec
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Choisir un dossier</DialogTitle>
+          <DialogDescription>
+            Sélectionnez un dossier de destination pour votre fichier
+          </DialogDescription>
         </DialogHeader>
         <ScrollArea className="h-[300px] pr-4">
           <div className="space-y-1">
