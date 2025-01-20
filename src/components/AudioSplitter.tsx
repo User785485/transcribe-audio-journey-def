@@ -111,6 +111,40 @@ export function AudioSplitter() {
     }]);
 
     try {
+      // Upload the chunk to storage first
+      const chunkPath = `splits/${chunkFileName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('audio')
+        .upload(chunkPath, chunk, {
+          contentType: chunk.type,
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Error uploading chunk:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('Chunk uploaded successfully to:', chunkPath);
+
+      // Create history entry
+      const { data: historyData, error: historyError } = await supabase
+        .from('history')
+        .insert({
+          filename: chunkFileName,
+          file_path: chunkPath,
+          file_type: 'split'
+        })
+        .select()
+        .single();
+
+      if (historyError) {
+        console.error('Error creating history entry:', historyError);
+        throw historyError;
+      }
+
+      console.log('History entry created:', historyData);
+
       const formData = new FormData();
       formData.append('file', chunkFile);
       formData.append('language', 'fr');
@@ -131,6 +165,19 @@ export function AudioSplitter() {
 
       if (error) {
         throw new Error(error.message || 'Une erreur est survenue');
+      }
+
+      // Update history entry with transcription
+      const { error: updateError } = await supabase
+        .from('history')
+        .update({
+          transcription: data.data.transcription.transcription
+        })
+        .eq('id', historyData.id);
+
+      if (updateError) {
+        console.error('Error updating history with transcription:', updateError);
+        throw updateError;
       }
 
       setTranscriptionProgress(prev => prev.map(p => 
@@ -182,6 +229,7 @@ export function AudioSplitter() {
   const { data: splitHistory, isLoading: isHistoryLoading } = useQuery({
     queryKey: ['split-history'],
     queryFn: async () => {
+      console.log('Fetching split history...');
       const { data, error } = await supabase
         .from('history')
         .select('*')
@@ -189,18 +237,27 @@ export function AudioSplitter() {
         .order('created_at', { ascending: false })
         .limit(5);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching split history:', error);
+        throw error;
+      }
+      
+      console.log('Split history fetched:', data);
       return data;
     },
   });
 
   const handleDownload = async (filePath: string, filename: string) => {
     try {
+      console.log('Downloading file:', { filePath, filename });
       const { data, error } = await supabase.storage
         .from('audio')
         .download(filePath);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error downloading file:', error);
+        throw error;
+      }
 
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
@@ -210,7 +267,10 @@ export function AudioSplitter() {
       a.click();
       URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      
+      console.log('File downloaded successfully');
     } catch (error) {
+      console.error('Download error:', error);
       toast({
         variant: "destructive",
         title: "Erreur",
