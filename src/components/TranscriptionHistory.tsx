@@ -75,6 +75,8 @@ export function TranscriptionHistory() {
         throw dbError;
       }
 
+      console.log('Created audio_files entry:', audioFileData);
+
       // Then upload the file to storage
       const { error: storageError } = await supabase.storage
         .from('audio')
@@ -90,6 +92,8 @@ export function TranscriptionHistory() {
         throw storageError;
       }
 
+      console.log('Uploaded file to storage:', transcriptionPath);
+
       // Update the history item to mark it as moved
       const { error: historyError } = await supabase
         .from('history')
@@ -100,6 +104,8 @@ export function TranscriptionHistory() {
         console.error('History error:', historyError);
         throw historyError;
       }
+
+      console.log('Updated history item');
 
       toast({
         description: "Transcription déplacée avec succès",
