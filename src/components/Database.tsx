@@ -16,6 +16,21 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+const SUPPORTED_AUDIO_FORMATS = {
+  'audio/*': [
+    '.mp3',
+    '.wav',
+    '.m4a',
+    '.ogg',
+    '.aac',
+    '.wma',
+    '.flac',
+    '.aiff',
+    '.alac'
+  ],
+  'text/plain': ['.txt']
+};
+
 export const Database = () => {
   const [newFolderName, setNewFolderName] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -85,20 +100,30 @@ export const Database = () => {
       }
 
       const fileExt = file.name.split('.').pop()?.toLowerCase();
-      const isAudio = ['mp3', 'wav', 'm4a', 'ogg'].includes(fileExt || '');
+      const isAudio = SUPPORTED_AUDIO_FORMATS['audio/*'].some(format => 
+        format.toLowerCase().includes(fileExt?.toLowerCase() || '')
+      );
       const isText = fileExt === 'txt';
 
       if (!isAudio && !isText) {
-        throw new Error("Format de fichier non supporté");
+        console.log('Extension non supportée:', fileExt);
+        console.log('Formats supportés:', SUPPORTED_AUDIO_FORMATS);
+        throw new Error(`Format de fichier non supporté. Formats acceptés: ${SUPPORTED_AUDIO_FORMATS['audio/*'].join(', ')} et .txt`);
       }
 
       const filePath = `${crypto.randomUUID()}.${fileExt}`;
+      console.log('Uploading file:', file.name, 'to path:', filePath);
+      
       const { error: uploadError } = await supabase.storage
         .from("audio")
         .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw uploadError;
+      }
 
+      console.log('File uploaded successfully, creating database entry');
       const { error: dbError } = await supabase
         .from("audio_files")
         .insert([{
@@ -108,7 +133,10 @@ export const Database = () => {
           folder_id: folderId
         }]);
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error('Database error:', dbError);
+        throw dbError;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folder-files"] });
@@ -126,6 +154,7 @@ export const Database = () => {
   });
 
   const onDrop = async (acceptedFiles: File[]) => {
+    console.log('Files dropped:', acceptedFiles);
     for (const file of acceptedFiles) {
       await uploadFileMutation.mutate({ file, folderId: selectedFolderId });
     }
@@ -133,10 +162,7 @@ export const Database = () => {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'audio/*': ['.mp3', '.wav', '.m4a', '.ogg'],
-      'text/plain': ['.txt']
-    },
+    accept: SUPPORTED_AUDIO_FORMATS,
     disabled: !selectedFolderId
   });
 
@@ -224,7 +250,7 @@ export const Database = () => {
           <p className="text-muted-foreground">
             {isDragActive
               ? "Déposez les fichiers ici"
-              : "Glissez et déposez des fichiers audio (.mp3, .wav, .m4a, .ogg) ou texte (.txt), ou cliquez pour sélectionner"}
+              : `Glissez et déposez des fichiers audio (${SUPPORTED_AUDIO_FORMATS['audio/*'].join(', ')}) ou texte (.txt), ou cliquez pour sélectionner`}
           </p>
         </div>
       )}
@@ -246,4 +272,4 @@ export const Database = () => {
       )}
     </div>
   );
-}
+};
