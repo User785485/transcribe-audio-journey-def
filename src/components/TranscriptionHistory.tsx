@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
-import { Search, FolderPlus } from 'lucide-react';
+import { Search, FolderPlus, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Database } from '@/integrations/supabase/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -43,7 +43,10 @@ export function TranscriptionHistory() {
         .is('parent_id', null)
         .order('name');
 
-      if (foldersError) throw foldersError;
+      if (foldersError) {
+        console.error('Error fetching folders:', foldersError);
+        throw foldersError;
+      }
 
       const foldersWithContents = await Promise.all(
         foldersData.map(async (folder) => {
@@ -70,13 +73,17 @@ export function TranscriptionHistory() {
         .is('folder_id', null)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching unorganized transcriptions:', error);
+        throw error;
+      }
       console.log('Unorganized transcriptions:', data);
       return data as Transcription[];
     },
   });
 
   const fetchFolderContents = async (folderId: string) => {
+    console.log('Fetching contents for folder:', folderId);
     const [subfolders, transcriptions] = await Promise.all([
       supabase
         .from('folders')
@@ -93,8 +100,14 @@ export function TranscriptionHistory() {
         .order('created_at', { ascending: false }),
     ]);
 
-    if (subfolders.error) throw subfolders.error;
-    if (transcriptions.error) throw transcriptions.error;
+    if (subfolders.error) {
+      console.error('Error fetching subfolders:', subfolders.error);
+      throw subfolders.error;
+    }
+    if (transcriptions.error) {
+      console.error('Error fetching transcriptions:', transcriptions.error);
+      throw transcriptions.error;
+    }
 
     const subfoldersWithContents = await Promise.all(
       subfolders.data.map(async (subfolder) => {
@@ -102,6 +115,11 @@ export function TranscriptionHistory() {
         return { ...subfolder, ...contents };
       })
     );
+
+    console.log('Folder contents fetched:', {
+      subfolders: subfoldersWithContents,
+      transcriptions: transcriptions.data
+    });
 
     return {
       subfolders: subfoldersWithContents,
@@ -118,70 +136,68 @@ export function TranscriptionHistory() {
       return;
     }
 
-    const { error } = await supabase
-      .from('folders')
-      .insert({
-        name: newFolderName,
-        parent_id: selectedFolder,
-      });
+    try {
+      const { error } = await supabase
+        .from('folders')
+        .insert({
+          name: newFolderName,
+          parent_id: selectedFolder,
+        });
 
-    if (error) {
-      console.error('Error creating folder:', error);
+      if (error) {
+        console.error('Error creating folder:', error);
+        throw error;
+      }
+
+      toast({
+        description: "Dossier créé avec succès",
+      });
+      setNewFolderName('');
+      setIsCreateFolderOpen(false);
+      refetchFolders();
+    } catch (error) {
+      console.error('Error in handleCreateFolder:', error);
       toast({
         variant: "destructive",
         description: "Erreur lors de la création du dossier",
       });
-      return;
     }
-
-    toast({
-      description: "Dossier créé avec succès",
-    });
-    setNewFolderName('');
-    setIsCreateFolderOpen(false);
-    refetchFolders();
   };
 
   const handleMoveToFolder = async (transcriptionId: string, folderId: string) => {
     console.log('Moving transcription to folder:', { transcriptionId, folderId });
-    const { error } = await supabase
-      .from('transcriptions')
-      .update({ folder_id: folderId })
-      .eq('id', transcriptionId);
+    try {
+      const { error } = await supabase
+        .from('transcriptions')
+        .update({ folder_id: folderId })
+        .eq('id', transcriptionId);
 
-    if (error) {
-      console.error('Error moving transcription:', error);
+      if (error) throw error;
+
+      const transcription = unorganizedTranscriptions?.find(t => t.id === transcriptionId);
+      if (transcription?.audio_files?.id) {
+        const { error: audioError } = await supabase
+          .from('audio_files')
+          .update({ folder_id: folderId })
+          .eq('id', transcription.audio_files.id);
+
+        if (audioError) throw audioError;
+      }
+
+      toast({
+        description: "Fichier déplacé avec succès",
+      });
+      setIsFolderSelectOpen(false);
+      setSelectedTranscription(null);
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      queryClient.invalidateQueries({ queryKey: ['transcriptions', 'unorganized'] });
+    } catch (error) {
+      console.error('Error moving file:', error);
       toast({
         variant: "destructive",
-        description: "Erreur lors du déplacement de la transcription",
+        description: "Erreur lors du déplacement du fichier",
       });
-      return;
     }
-
-    const transcription = unorganizedTranscriptions?.find(t => t.id === transcriptionId);
-    if (transcription?.audio_files?.id) {
-      const { error: audioError } = await supabase
-        .from('audio_files')
-        .update({ folder_id: folderId })
-        .eq('id', transcription.audio_files.id);
-
-      if (audioError) {
-        console.error('Error moving audio file:', audioError);
-        toast({
-          variant: "destructive",
-          description: "Erreur lors du déplacement du fichier audio",
-        });
-        return;
-      }
-    }
-
-    toast({
-      description: "Fichier déplacé avec succès",
-    });
-    setIsFolderSelectOpen(false);
-    setSelectedTranscription(null);
-    queryClient.invalidateQueries({ queryKey: ['folders'] });
-    queryClient.invalidateQueries({ queryKey: ['transcriptions', 'unorganized'] });
   };
 
   const renameFolderMutation = useMutation({
@@ -209,6 +225,31 @@ export function TranscriptionHistory() {
     },
   });
 
+  const deleteFolderMutation = useMutation({
+    mutationFn: async (folderId: string) => {
+      console.log('Deleting folder:', folderId);
+      const { error } = await supabase
+        .from('folders')
+        .delete()
+        .eq('id', folderId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      toast({
+        description: "Dossier supprimé avec succès",
+      });
+    },
+    onError: (error) => {
+      console.error('Error deleting folder:', error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors de la suppression du dossier",
+      });
+    },
+  });
+
   const toggleFolder = (folderId: string) => {
     const newOpenFolders = new Set(openFolders);
     if (newOpenFolders.has(folderId)) {
@@ -217,6 +258,36 @@ export function TranscriptionHistory() {
       newOpenFolders.add(folderId);
     }
     setOpenFolders(newOpenFolders);
+  };
+
+  const handleDeleteAllFoldersExceptMalo = async () => {
+    try {
+      const { data: allFolders, error: fetchError } = await supabase
+        .from('folders')
+        .select('*');
+
+      if (fetchError) throw fetchError;
+
+      const maloFolder = allFolders?.find(f => f.name.toLowerCase() === 'malo');
+      
+      for (const folder of allFolders || []) {
+        if (folder.id !== maloFolder?.id) {
+          await deleteFolderMutation.mutateAsync(folder.id);
+        }
+      }
+
+      toast({
+        description: "Tous les dossiers ont été supprimés sauf 'Malo'",
+      });
+      
+      refetchFolders();
+    } catch (error) {
+      console.error('Error deleting folders:', error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors de la suppression des dossiers",
+      });
+    }
   };
 
   if (foldersLoading || transcriptionsLoading) {
@@ -233,6 +304,14 @@ export function TranscriptionHistory() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-2xl font-bold">Base de données</CardTitle>
           <div className="flex items-center space-x-4">
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteAllFoldersExceptMalo}
+              className="gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Réinitialiser les dossiers
+            </Button>
             <div className="flex items-center space-x-2">
               <Search className="w-4 h-4 text-muted-foreground" />
               <Input
@@ -279,6 +358,7 @@ export function TranscriptionHistory() {
                 setIsFolderSelectOpen(true);
               }}
               onRenameFolder={(id, name) => renameFolderMutation.mutate({ id, name })}
+              onDeleteFolder={(id) => deleteFolderMutation.mutate(id)}
               openFolders={openFolders}
               onToggleFolder={toggleFolder}
             />
