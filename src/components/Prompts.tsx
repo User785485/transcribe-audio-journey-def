@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -11,13 +11,27 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
 export function Prompts() {
   const [isOpen, setIsOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [password, setPassword] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [promptToDelete, setPromptToDelete] = useState<string | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<{
     id: string;
     title: string;
@@ -25,6 +39,26 @@ export function Prompts() {
   } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const savedAuth = sessionStorage.getItem("prompts_authenticated");
+    if (savedAuth === "true") {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handlePasswordSubmit = () => {
+    if (password === "1989") {
+      setIsAuthenticated(true);
+      sessionStorage.setItem("prompts_authenticated", "true");
+    } else {
+      toast({
+        variant: "destructive",
+        description: "Mot de passe incorrect",
+      });
+    }
+  };
 
   const { data: prompts, isLoading } = useQuery({
     queryKey: ["prompts"],
@@ -101,6 +135,8 @@ export function Prompts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prompts"] });
+      setPromptToDelete(null);
+      setDeleteConfirmation("");
       toast({
         description: "Prompt supprimé avec succès",
       });
@@ -140,6 +176,37 @@ export function Prompts() {
     setContent(prompt.content);
     setIsOpen(true);
   };
+
+  const handleDelete = (id: string) => {
+    if (deleteConfirmation.toLowerCase() === "confirmer") {
+      deletePromptMutation.mutate(id);
+    } else {
+      toast({
+        variant: "destructive",
+        description: 'Veuillez écrire "confirmer" pour supprimer',
+      });
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="w-full max-w-md space-y-4">
+          <h2 className="text-2xl font-bold text-center">Accès Protégé</h2>
+          <Input
+            type="password"
+            placeholder="Entrez le mot de passe"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handlePasswordSubmit()}
+          />
+          <Button className="w-full" onClick={handlePasswordSubmit}>
+            Accéder
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <div className="p-4">Chargement...</div>;
@@ -217,13 +284,42 @@ export function Prompts() {
                 >
                   <Pencil className="w-4 h-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => deletePromptMutation.mutate(prompt.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <AlertDialog open={promptToDelete === prompt.id}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPromptToDelete(prompt.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Cette action est irréversible. Écrivez "confirmer" pour supprimer ce prompt.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <Input
+                      value={deleteConfirmation}
+                      onChange={(e) => setDeleteConfirmation(e.target.value)}
+                      placeholder='Écrivez "confirmer"'
+                    />
+                    <AlertDialogFooter>
+                      <AlertDialogCancel onClick={() => {
+                        setPromptToDelete(null);
+                        setDeleteConfirmation("");
+                      }}>
+                        Annuler
+                      </AlertDialogCancel>
+                      <Button
+                        variant="destructive"
+                        onClick={() => handleDelete(prompt.id)}
+                      >
+                        Supprimer
+                      </Button>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">
