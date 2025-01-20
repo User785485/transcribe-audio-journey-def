@@ -8,8 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { FileAudio, Copy, Download } from 'lucide-react';
+import { FileAudio, Copy, Download, FolderInput } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { FolderSelect } from './FolderSelect';
 
 type HistoryItem = {
   id: string;
@@ -23,6 +24,8 @@ type HistoryItem = {
 
 export function TranscriptionHistory() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: historyItems, isLoading } = useQuery({
@@ -41,6 +44,20 @@ export function TranscriptionHistory() {
 
       console.log('History items fetched:', data);
       return data as HistoryItem[];
+    },
+  });
+
+  const { data: folders } = useQuery({
+    queryKey: ['folders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('folders')
+        .select('*')
+        .is('parent_id', null)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
     },
   });
 
@@ -83,18 +100,47 @@ export function TranscriptionHistory() {
     }
   };
 
+  const handleMoveToFolder = async (folderId: string) => {
+    if (!selectedItemId) return;
+
+    try {
+      console.log('Moving file to folder:', { selectedItemId, folderId });
+      
+      // Get the history item
+      const historyItem = historyItems?.find(item => item.id === selectedItemId);
+      if (!historyItem) throw new Error('Item not found');
+
+      // Create audio file entry
+      const { error: audioFileError } = await supabase
+        .from('audio_files')
+        .insert({
+          filename: historyItem.filename,
+          file_path: historyItem.file_path,
+          file_type: historyItem.file_type,
+          folder_id: folderId
+        });
+
+      if (audioFileError) throw audioFileError;
+
+      toast({
+        description: "Fichier déplacé avec succès",
+      });
+
+      setIsFolderSelectOpen(false);
+      setSelectedItemId(null);
+    } catch (error) {
+      console.error('Error moving file to folder:', error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors du déplacement du fichier",
+      });
+    }
+  };
+
   const filteredItems = historyItems?.filter(item =>
     item.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.transcription?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <div className="text-lg text-muted-foreground">Chargement...</div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6 p-6">
@@ -167,6 +213,17 @@ export function TranscriptionHistory() {
                           >
                             <Download className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => {
+                              setSelectedItemId(item.id);
+                              setIsFolderSelectOpen(true);
+                            }}
+                            title="Déplacer vers un dossier"
+                          >
+                            <FolderInput className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -177,6 +234,16 @@ export function TranscriptionHistory() {
           </div>
         </CardContent>
       </Card>
+
+      <FolderSelect
+        folders={folders || []}
+        isOpen={isFolderSelectOpen}
+        onClose={() => {
+          setIsFolderSelectOpen(false);
+          setSelectedItemId(null);
+        }}
+        onSelect={handleMoveToFolder}
+      />
     </div>
   );
 }
