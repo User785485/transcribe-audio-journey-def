@@ -104,59 +104,47 @@ export function TranscriptionHistory() {
     if (!selectedItemId) return;
 
     try {
-      console.log('Moving file to folder:', { selectedItemId, folderId });
+      console.log('Moving transcription to folder:', { selectedItemId, folderId });
       
       // Get the history item
       const historyItem = historyItems?.find(item => item.id === selectedItemId);
       if (!historyItem) throw new Error('Item not found');
+      if (!historyItem.transcription) throw new Error('No transcription found');
 
-      // First, find the audio file associated with this history item
-      const { data: audioFiles, error: audioFilesError } = await supabase
-        .from('audio_files')
-        .select('id')
-        .eq('file_path', historyItem.file_path)
-        .single();
-
-      if (audioFilesError) throw audioFilesError;
-
-      if (!audioFiles) {
-        // If no audio file exists, create one
-        const { error: createError } = await supabase
-          .from('audio_files')
-          .insert({
-            filename: historyItem.filename,
-            file_path: historyItem.file_path,
-            file_type: historyItem.file_type,
-            folder_id: folderId
-          });
-
-        if (createError) throw createError;
-      } else {
-        // If audio file exists, update its folder_id
-        const { error: updateError } = await supabase
-          .from('audio_files')
-          .update({ folder_id: folderId })
-          .eq('id', audioFiles.id);
-
-        if (updateError) throw updateError;
-      }
-
-      // Update the history item with the folder name
+      // Get the folder name
       const { data: folderData } = await supabase
         .from('folders')
         .select('name')
         .eq('id', folderId)
         .single();
 
-      if (folderData) {
-        await supabase
-          .from('history')
-          .update({ folder_name: folderData.name })
-          .eq('id', selectedItemId);
-      }
+      if (!folderData) throw new Error('Folder not found');
+
+      // Create a text file in the folder with the transcription
+      const transcriptionFileName = `${historyItem.filename.split('.')[0]}_transcription.txt`;
+      const transcriptionPath = `${folderId}/${transcriptionFileName}`;
+
+      // Store the transcription text file
+      const transcriptionBlob = new Blob([historyItem.transcription], { type: 'text/plain' });
+      const { error: storageError } = await supabase.storage
+        .from('audio')
+        .upload(transcriptionPath, transcriptionBlob, {
+          contentType: 'text/plain',
+          upsert: true
+        });
+
+      if (storageError) throw storageError;
+
+      // Update the history item with the folder name
+      const { error: historyError } = await supabase
+        .from('history')
+        .update({ folder_name: folderData.name })
+        .eq('id', selectedItemId);
+
+      if (historyError) throw historyError;
 
       toast({
-        description: "Fichier déplacé avec succès",
+        description: "Transcription déplacée avec succès",
       });
 
       // Refresh the data
@@ -165,10 +153,10 @@ export function TranscriptionHistory() {
       setIsFolderSelectOpen(false);
       setSelectedItemId(null);
     } catch (error) {
-      console.error('Error moving file to folder:', error);
+      console.error('Error moving transcription to folder:', error);
       toast({
         variant: "destructive",
-        description: "Erreur lors du déplacement du fichier",
+        description: "Erreur lors du déplacement de la transcription",
       });
     }
   };
@@ -249,17 +237,19 @@ export function TranscriptionHistory() {
                           >
                             <Download className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => {
-                              setSelectedItemId(item.id);
-                              setIsFolderSelectOpen(true);
-                            }}
-                            title="Déplacer vers un dossier"
-                          >
-                            <FolderInput className="h-4 w-4" />
-                          </Button>
+                          {item.transcription && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedItemId(item.id);
+                                setIsFolderSelectOpen(true);
+                              }}
+                              title="Déplacer la transcription vers un dossier"
+                            >
+                              <FolderInput className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
