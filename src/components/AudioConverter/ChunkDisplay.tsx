@@ -1,60 +1,72 @@
 import { Button } from "@/components/ui/button";
 import { ChunkProgress } from "./types";
-import { Loader2 } from "lucide-react";
+import { Loader2, Download, FileAudio, AlertCircle } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 
 interface ChunkDisplayProps {
   item: ChunkProgress;
   onDownloadChunk: (chunk: Blob, originalName: string, chunkNumber: number, totalChunks: number) => void;
-  onTranscribeChunk: (chunk: Blob, originalName: string, chunkNumber: number, totalChunks: number) => void;
 }
 
-export function ChunkDisplay({ item, onDownloadChunk, onTranscribeChunk }: ChunkDisplayProps) {
+export function ChunkDisplay({ item, onDownloadChunk }: ChunkDisplayProps) {
   return (
-    <div className="space-y-4 border rounded-lg p-4">
-      <div className="flex justify-between items-center">
-        <h3 className="font-medium">{item.originalName}</h3>
-        <span className="text-sm text-muted-foreground">
-          {item.status === 'splitting' && 'Conversion et découpage en cours...'}
-          {item.status === 'completed' && 'Terminé'}
-          {item.status === 'error' && 'Erreur'}
-        </span>
-      </div>
-      
-      {item.status === 'splitting' && (
-        <div className="flex items-center justify-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <p>Conversion et découpage en cours...</p>
+    <Card className="w-full">
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileAudio className="h-5 w-5" />
+            {item.originalName}
+          </CardTitle>
+          <span className="text-sm text-muted-foreground">
+            {item.status === 'splitting' && 'Découpage en cours...'}
+            {item.status === 'completed' && `${item.chunks.length} parties`}
+            {item.status === 'error' && 'Erreur'}
+          </span>
         </div>
-      )}
+      </CardHeader>
+      
+      <CardContent>
+        {item.status === 'splitting' && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <p className="text-sm text-muted-foreground">Découpage du fichier en cours...</p>
+            </div>
+            <Progress value={33} className="h-2" />
+          </div>
+        )}
 
-      {item.status === 'completed' && (
-        <div className="space-y-4">
-          <p>Fichier découpé en {item.chunks.length} parties</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {item.chunks.map((chunk) => (
-              <div key={chunk.number} className="flex gap-2">
+        {item.status === 'completed' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {item.chunks.map((chunk) => (
                 <Button
+                  key={chunk.number}
                   onClick={() => onDownloadChunk(chunk.blob, item.originalName, chunk.number, item.chunks.length)}
                   variant="outline"
-                  className="flex-1"
+                  className="flex items-center gap-2 h-auto py-4 px-4"
                 >
-                  Partie {chunk.number} ({Math.round(chunk.size / 1024 / 1024)}MB)
+                  <Download className="h-4 w-4" />
+                  <div className="flex flex-col items-start">
+                    <span>Partie {chunk.number}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {Math.round(chunk.size / 1024 / 1024)}MB
+                    </span>
+                  </div>
                 </Button>
-                <Button
-                  onClick={() => onTranscribeChunk(chunk.blob, item.originalName, chunk.number, item.chunks.length)}
-                  variant="secondary"
-                >
-                  Transcrire
-                </Button>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {item.status === 'error' && (
-        <p className="text-destructive">{item.error}</p>
-      )}
-    </div>
+        {item.status === 'error' && (
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertCircle className="h-4 w-4" />
+            <p className="text-sm">{item.error}</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

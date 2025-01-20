@@ -2,19 +2,17 @@ import { useState, useCallback } from "react";
 import { DropZone } from "./DropZone";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ChunkProgress, TranscriptionProgress } from "./AudioConverter/types";
+import { ChunkProgress } from "./AudioConverter/types";
 import { AudioAnalyzer } from "./AudioConverter/AudioAnalyzer";
 import { AudioChunker } from "./AudioConverter/AudioSplitter";
 import { ChunkDisplay } from "./AudioConverter/ChunkDisplay";
-import { TranscriptionDisplay } from "./AudioConverter/TranscriptionDisplay";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { FileAudio, Download } from "lucide-react";
-import { Loader2 } from "lucide-react";
+import { FileAudio, Download, Loader2 } from "lucide-react";
 
 export const SUPPORTED_FORMATS = {
   'audio/flac': ['.flac'],
@@ -31,7 +29,6 @@ export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
 
 export function AudioSplitter() {
   const [splitProgress, setSplitProgress] = useState<ChunkProgress[]>([]);
-  const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress[]>([]);
   const { toast } = useToast();
 
   const audioAnalyzer = new AudioAnalyzer();
@@ -69,6 +66,36 @@ export function AudioSplitter() {
         } : p
       ));
 
+      // Save to history
+      const fileExtension = file.name.split('.').pop() || '';
+      const chunkFileName = `${file.name.replace(`.${fileExtension}`, '')}_partie1de${chunks.length}.${fileExtension}`;
+      const chunkPath = `splits/${chunkFileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('audio')
+        .upload(chunkPath, chunks[0].blob, {
+          contentType: file.type,
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Error uploading chunk:', uploadError);
+        throw uploadError;
+      }
+
+      const { error: historyError } = await supabase
+        .from('history')
+        .insert({
+          filename: chunkFileName,
+          file_path: chunkPath,
+          file_type: 'split'
+        });
+
+      if (historyError) {
+        console.error('Error creating history entry:', historyError);
+        throw historyError;
+      }
+
       toast({
         title: "Découpage terminé",
         description: `Le fichier ${file.name} a été découpé en ${chunks.length} parties.`,
@@ -87,127 +114,6 @@ export function AudioSplitter() {
         variant: "destructive",
         title: "Erreur",
         description: `Erreur lors du traitement de ${file.name}: ${error instanceof Error ? error.message : "Une erreur est survenue"}`,
-      });
-    }
-  };
-
-  const processChunkForTranscription = async (chunk: Blob, originalName: string, chunkNumber: number, totalChunks: number) => {
-    const id = crypto.randomUUID();
-    const fileExtension = originalName.split('.').pop() || '';
-    const chunkFileName = `${originalName.replace(`.${fileExtension}`, '')}_partie${chunkNumber}de${totalChunks}.${fileExtension}`;
-    const chunkFile = new File([chunk], chunkFileName, { type: chunk.type });
-
-    console.log('Processing chunk for transcription:', {
-      filename: chunkFileName,
-      type: chunkFile.type,
-      size: chunk.size
-    });
-
-    setTranscriptionProgress(prev => [...prev, {
-      id,
-      filename: chunkFile.name,
-      progress: 0,
-      status: 'pending'
-    }]);
-
-    try {
-      // Upload the chunk to storage first
-      const chunkPath = `splits/${chunkFileName}`;
-      const { error: uploadError } = await supabase.storage
-        .from('audio')
-        .upload(chunkPath, chunk, {
-          contentType: chunk.type,
-          upsert: true
-        });
-
-      if (uploadError) {
-        console.error('Error uploading chunk:', uploadError);
-        throw uploadError;
-      }
-
-      console.log('Chunk uploaded successfully to:', chunkPath);
-
-      // Create history entry
-      const { data: historyData, error: historyError } = await supabase
-        .from('history')
-        .insert({
-          filename: chunkFileName,
-          file_path: chunkPath,
-          file_type: 'split'
-        })
-        .select()
-        .single();
-
-      if (historyError) {
-        console.error('Error creating history entry:', historyError);
-        throw historyError;
-      }
-
-      console.log('History entry created:', historyData);
-
-      const formData = new FormData();
-      formData.append('file', chunkFile);
-      formData.append('language', 'fr');
-      formData.append('chunkIndex', chunkNumber.toString());
-      formData.append('totalChunks', totalChunks.toString());
-      
-      setTranscriptionProgress(prev => prev.map(p => 
-        p.id === id ? {
-          ...p,
-          status: 'transcribing',
-          progress: 50
-        } : p
-      ));
-
-      const { data, error } = await supabase.functions.invoke('transcribe-chunks', {
-        body: formData,
-      });
-
-      if (error) {
-        throw new Error(error.message || 'Une erreur est survenue');
-      }
-
-      // Update history entry with transcription
-      const { error: updateError } = await supabase
-        .from('history')
-        .update({
-          transcription: data.data.transcription.transcription
-        })
-        .eq('id', historyData.id);
-
-      if (updateError) {
-        console.error('Error updating history with transcription:', updateError);
-        throw updateError;
-      }
-
-      setTranscriptionProgress(prev => prev.map(p => 
-        p.id === id ? {
-          ...p,
-          status: 'completed',
-          progress: 100,
-          transcription: data.data.transcription.transcription
-        } : p
-      ));
-
-      toast({
-        title: "Transcription terminée",
-        description: `La partie ${chunkNumber} de ${originalName} a été transcrite.`,
-      });
-    } catch (error) {
-      console.error('Error during transcription:', error);
-      setTranscriptionProgress(prev => prev.map(p => 
-        p.id === id ? {
-          ...p,
-          status: 'error',
-          progress: 100,
-          error: error instanceof Error ? error.message : "Une erreur est survenue"
-        } : p
-      ));
-      
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: `Erreur lors de la transcription de la partie ${chunkNumber}: ${error instanceof Error ? error.message : "Une erreur est survenue"}`,
       });
     }
   };
@@ -282,7 +188,7 @@ export function AudioSplitter() {
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
       <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold">Découper et transcrire</h2>
+        <h2 className="text-2xl font-bold">Découper un fichier audio</h2>
         <p className="text-muted-foreground">
           Pour les fichiers de plus de 25MB : déposez votre fichier audio ici pour le découper en parties de 20MB maximum.
         </p>
@@ -314,15 +220,10 @@ export function AudioSplitter() {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
           }}
-          onTranscribeChunk={processChunkForTranscription}
         />
       ))}
 
-      {transcriptionProgress.map((item) => (
-        <TranscriptionDisplay key={item.id} item={item} />
-      ))}
-
-      <Card className="mt-8">
+      <Card>
         <CardHeader>
           <CardTitle>Derniers fichiers découpés</CardTitle>
         </CardHeader>
