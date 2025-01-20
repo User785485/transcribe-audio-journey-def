@@ -15,6 +15,11 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Download, Copy, Search, FileAudio } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Database } from '@/integrations/supabase/types';
+
+type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
+  audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
+};
 
 export function TranscriptionHistory() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,7 +47,7 @@ export function TranscriptionHistory() {
       }
       
       console.log('Transcriptions fetched:', data);
-      return data;
+      return data as Transcription[];
     },
   });
 
