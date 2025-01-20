@@ -2,19 +2,30 @@ import { useState, useCallback } from "react";
 import { DropZone } from "./DropZone";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ChunkProgress, TranscriptionProgress, SUPPORTED_FORMATS, MAX_TRANSCRIPTION_SIZE } from "./AudioConverter/types";
-import { Mp3Converter } from "./AudioConverter/Mp3Converter";
+import { ChunkProgress, TranscriptionProgress } from "./AudioConverter/types";
 import { AudioAnalyzer } from "./AudioConverter/AudioAnalyzer";
 import { AudioChunker } from "./AudioConverter/AudioSplitter";
 import { ChunkDisplay } from "./AudioConverter/ChunkDisplay";
 import { TranscriptionDisplay } from "./AudioConverter/TranscriptionDisplay";
+
+export const SUPPORTED_FORMATS = {
+  'audio/flac': ['.flac'],
+  'audio/m4a': ['.m4a'],
+  'audio/mpeg': ['.mp3', '.mpeg', '.mpga'],
+  'audio/ogg': ['.oga', '.ogg'],
+  'audio/wav': ['.wav'],
+  'audio/webm': ['.webm'],
+  'video/mp4': ['.mp4'],
+  'audio/opus': ['.opus']
+};
+
+export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
 
 export function AudioSplitter() {
   const [splitProgress, setSplitProgress] = useState<ChunkProgress[]>([]);
   const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress[]>([]);
   const { toast } = useToast();
 
-  const mp3Converter = new Mp3Converter();
   const audioAnalyzer = new AudioAnalyzer();
   const audioChunker = new AudioChunker();
 
@@ -33,13 +44,8 @@ export function AudioSplitter() {
       const metadata = await audioAnalyzer.analyzeFile(file);
       console.log('File metadata:', metadata);
 
-      // Convert to MP3 if needed
-      const mp3File = metadata.needsConversion 
-        ? await mp3Converter.convertToMp3(file)
-        : file;
-
       // Split into chunks
-      const rawChunks = await audioChunker.splitFile(mp3File);
+      const rawChunks = await audioChunker.splitFile(file);
       
       const chunks = rawChunks.map((blob, index) => ({
         number: index + 1,
@@ -171,7 +177,6 @@ export function AudioSplitter() {
         <h2 className="text-2xl font-bold">Découper et transcrire</h2>
         <p className="text-muted-foreground">
           Pour les fichiers de plus de 25MB : déposez votre fichier audio ici pour le découper en parties de 20MB maximum.
-          Les fichiers seront automatiquement convertis en MP3 pour une meilleure compatibilité.
         </p>
       </div>
 
