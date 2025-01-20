@@ -60,26 +60,15 @@ export const Database = () => {
     enabled: !!selectedFolderId,
     queryFn: async () => {
       console.log('Fetching files for folder:', selectedFolderId);
-      const { data: audioFiles, error: audioError } = await supabase
+      const { data: files, error } = await supabase
         .from("audio_files")
         .select("*")
         .eq("folder_id", selectedFolderId)
         .order("created_at", { ascending: false });
 
-      if (audioError) throw audioError;
-
-      // Fetch text files (transcriptions) that were moved to this folder
-      const { data: textFiles, error: textError } = await supabase
-        .from("audio_files")
-        .select("*")
-        .eq("folder_id", selectedFolderId)
-        .eq("file_type", "text")
-        .order("created_at", { ascending: false });
-
-      if (textError) throw textError;
-
-      console.log('Files found:', { audioFiles, textFiles });
-      return [...(audioFiles || []), ...(textFiles || [])];
+      if (error) throw error;
+      console.log('Files found:', files);
+      return files || [];
     },
   });
 
@@ -87,7 +76,9 @@ export const Database = () => {
     mutationFn: async (name: string) => {
       const { data, error } = await supabase
         .from("folders")
-        .insert([{ name }]);
+        .insert([{ name }])
+        .select()
+        .single();
       if (error) throw error;
       return data;
     },
@@ -113,7 +104,9 @@ export const Database = () => {
       const { data, error } = await supabase
         .from("folders")
         .update({ name })
-        .eq("id", id);
+        .eq("id", id)
+        .select()
+        .single();
       if (error) throw error;
       return data;
     },
@@ -147,12 +140,10 @@ export const Database = () => {
       const isText = fileExt === 'txt';
 
       if (!isAudio && !isText) {
-        console.log('Extension non supportée:', fileExt);
-        console.log('Formats supportés:', SUPPORTED_AUDIO_FORMATS);
         throw new Error(`Format de fichier non supporté. Formats acceptés: ${SUPPORTED_AUDIO_FORMATS['audio/*'].join(', ')} et .txt`);
       }
 
-      const filePath = `${crypto.randomUUID()}.${fileExt}`;
+      const filePath = `${folderId}/${file.name}`;
       console.log('Uploading file:', file.name, 'to path:', filePath);
       
       const { error: uploadError } = await supabase.storage
