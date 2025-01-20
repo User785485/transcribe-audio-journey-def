@@ -1,3 +1,4 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
@@ -8,7 +9,11 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('Received request:', req.method);
+
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('Handling CORS preflight request');
     return new Response(null, { 
       headers: corsHeaders,
       status: 204
@@ -16,8 +21,6 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Received request:', req.method);
-    
     if (req.method !== 'POST') {
       throw new Error('Method not allowed');
     }
@@ -38,6 +41,28 @@ serve(async (req) => {
       type: audioFile.type,
       size: audioFile.size
     });
+
+    // Initialize Supabase client
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Store file in Supabase Storage
+    const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
+    console.log('Uploading file to Storage:', filePath);
+
+    const { data: storageData, error: storageError } = await supabaseAdmin.storage
+      .from('audio')
+      .upload(filePath, audioFile, {
+        contentType: audioFile.type,
+        upsert: false
+      });
+
+    if (storageError) {
+      console.error('Storage error:', storageError);
+      throw storageError;
+    }
 
     // Prepare file for Whisper API
     const whisperFormData = new FormData();
@@ -65,27 +90,7 @@ serve(async (req) => {
     const { text: transcription } = await whisperResponse.json();
     console.log('Transcription received:', transcription.substring(0, 100) + '...');
 
-    // Store file and transcription
-    const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
-
-    console.log('Uploading file to Storage...');
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    const { data: storageData, error: storageError } = await supabaseAdmin.storage
-      .from('audio')
-      .upload(filePath, audioFile, {
-        contentType: audioFile.type,
-        upsert: false
-      });
-
-    if (storageError) {
-      console.error('Storage error:', storageError);
-      throw storageError;
-    }
-
+    // Store audio file reference in database
     console.log('Creating audio_files entry...');
     const { data: audioFileData, error: audioFileError } = await supabaseAdmin
       .from('audio_files')
@@ -101,13 +106,14 @@ serve(async (req) => {
       throw audioFileError;
     }
 
+    // Store transcription in database
     console.log('Creating transcription entry...');
     const { data: transcriptionData, error: transcriptionError } = await supabaseAdmin
       .from('transcriptions')
       .insert({
         audio_file_id: audioFileData.id,
-        transcription,
-        language,
+        transcription: transcription,
+        language: language,
         status: 'completed'
       })
       .select()
