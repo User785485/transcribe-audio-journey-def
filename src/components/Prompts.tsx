@@ -78,7 +78,9 @@ export function Prompts() {
   const createPromptMutation = useMutation({
     mutationFn: async (values: { title: string; content: string }) => {
       console.log("Creating prompt:", values);
-      const { data, error } = await supabase.from("prompts").insert([values]);
+      const { data, error } = await supabase
+        .from("prompts")
+        .insert([values]);
       if (error) throw error;
       return data;
     },
