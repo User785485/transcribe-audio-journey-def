@@ -1,8 +1,8 @@
-import { Link, Outlet } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Upload, History, Settings, Scissors, FileType, FileText, MessageSquare, Database } from "lucide-react";
+import { Upload, Settings, Scissors, FileType, FileText, MessageSquare, Database } from "lucide-react";
 
-export function Layout() {
+export function Layout({ children }) {
   return (
     <div className="flex h-screen">
       <aside className="w-64 border-r bg-background">
@@ -11,7 +11,7 @@ export function Layout() {
             <h1 className="text-lg font-bold">Transcripteur Whisper</h1>
           </div>
           <div className="flex-1 p-4 space-y-2">
-            <Link to="/dashboard">
+            <Link to="/">
               <Button variant="ghost" className="w-full justify-start">
                 <Upload className="mr-2 h-4 w-4" />
                 Nouvelle transcription
@@ -29,12 +29,6 @@ export function Layout() {
                 Convertir fichiers
               </Button>
             </Link>
-            <Link to="/history">
-              <Button variant="ghost" className="w-full justify-start">
-                <History className="mr-2 h-4 w-4" />
-                Historique
-              </Button>
-            </Link>
             <Link to="/database">
               <Button variant="ghost" className="w-full justify-start">
                 <Database className="mr-2 h-4 w-4" />
@@ -47,14 +41,12 @@ export function Layout() {
                 Prompts
               </Button>
             </Link>
-            <Link to="/whatsapp">
-              <Button variant="ghost" className="w-full justify-start">
-                <MessageSquare className="mr-2 h-4 w-4" />
-                <a href="https://web.whatsapp.com" target="_blank" rel="noopener noreferrer" className="w-full text-left">
-                  WhatsApp Web
-                </a>
-              </Button>
-            </Link>
+            <Button variant="ghost" className="w-full justify-start">
+              <MessageSquare className="mr-2 h-4 w-4" />
+              <a href="https://web.whatsapp.com" target="_blank" rel="noopener noreferrer" className="w-full text-left">
+                WhatsApp Web
+              </a>
+            </Button>
             <Link to="/settings">
               <Button variant="ghost" className="w-full justify-start">
                 <Settings className="mr-2 h-4 w-4" />
@@ -66,7 +58,7 @@ export function Layout() {
       </aside>
       <main className="flex-1 overflow-auto">
         <div className="container py-8">
-          <Outlet />
+          {children}
         </div>
       </main>
     </div>

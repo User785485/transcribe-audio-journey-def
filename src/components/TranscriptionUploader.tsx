@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { FileAudio, Copy, Download } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export const SUPPORTED_FORMATS = {
   'audio/flac': ['.flac'],
@@ -28,6 +29,7 @@ export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
 export function TranscriptionUploader() {
   const [transcriptionProgress, setTranscriptionProgress] = useState([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const processFile = async (file) => {
     const id = crypto.randomUUID();
