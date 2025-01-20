@@ -1,6 +1,6 @@
 import { Link, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Upload, History, Settings, Scissors, FileType, FileText, MessageSquare } from "lucide-react";
+import { Upload, History, Settings, Scissors, FileType, FileText, MessageSquare, Database } from "lucide-react";
 
 export function Layout() {
   return (
@@ -32,6 +32,12 @@ export function Layout() {
             <Link to="/history">
               <Button variant="ghost" className="w-full justify-start">
                 <History className="mr-2 h-4 w-4" />
+                Historique
+              </Button>
+            </Link>
+            <Link to="/database">
+              <Button variant="ghost" className="w-full justify-start">
+                <Database className="mr-2 h-4 w-4" />
                 Base de données
               </Button>
             </Link>
