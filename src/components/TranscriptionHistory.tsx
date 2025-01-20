@@ -28,7 +28,7 @@ export function TranscriptionHistory() {
   const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
   const { toast } = useToast();
 
-  const { data: historyItems, isLoading } = useQuery({
+  const { data: historyItems, isLoading, refetch } = useQuery({
     queryKey: ['history'],
     queryFn: async () => {
       console.log('Fetching history items...');
@@ -110,21 +110,57 @@ export function TranscriptionHistory() {
       const historyItem = historyItems?.find(item => item.id === selectedItemId);
       if (!historyItem) throw new Error('Item not found');
 
-      // Create audio file entry
-      const { error: audioFileError } = await supabase
+      // First, find the audio file associated with this history item
+      const { data: audioFiles, error: audioFilesError } = await supabase
         .from('audio_files')
-        .insert({
-          filename: historyItem.filename,
-          file_path: historyItem.file_path,
-          file_type: historyItem.file_type,
-          folder_id: folderId
-        });
+        .select('id')
+        .eq('file_path', historyItem.file_path)
+        .single();
 
-      if (audioFileError) throw audioFileError;
+      if (audioFilesError) throw audioFilesError;
+
+      if (!audioFiles) {
+        // If no audio file exists, create one
+        const { error: createError } = await supabase
+          .from('audio_files')
+          .insert({
+            filename: historyItem.filename,
+            file_path: historyItem.file_path,
+            file_type: historyItem.file_type,
+            folder_id: folderId
+          });
+
+        if (createError) throw createError;
+      } else {
+        // If audio file exists, update its folder_id
+        const { error: updateError } = await supabase
+          .from('audio_files')
+          .update({ folder_id: folderId })
+          .eq('id', audioFiles.id);
+
+        if (updateError) throw updateError;
+      }
+
+      // Update the history item with the folder name
+      const { data: folderData } = await supabase
+        .from('folders')
+        .select('name')
+        .eq('id', folderId)
+        .single();
+
+      if (folderData) {
+        await supabase
+          .from('history')
+          .update({ folder_name: folderData.name })
+          .eq('id', selectedItemId);
+      }
 
       toast({
         description: "Fichier déplacé avec succès",
       });
+
+      // Refresh the data
+      refetch();
 
       setIsFolderSelectOpen(false);
       setSelectedItemId(null);
