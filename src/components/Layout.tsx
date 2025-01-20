@@ -1,6 +1,6 @@
 import { Link, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Upload, History, Settings, Scissors, FileType } from "lucide-react";
+import { Upload, History, Settings, Scissors, FileType, FileText } from "lucide-react";
 
 export function Layout() {
   return (
@@ -33,6 +33,12 @@ export function Layout() {
               <Button variant="ghost" className="w-full justify-start">
                 <History className="mr-2 h-4 w-4" />
                 Historique
+              </Button>
+            </Link>
+            <Link to="/prompts">
+              <Button variant="ghost" className="w-full justify-start">
+                <FileText className="mr-2 h-4 w-4" />
+                Prompts
               </Button>
             </Link>
             <Link to="/settings">

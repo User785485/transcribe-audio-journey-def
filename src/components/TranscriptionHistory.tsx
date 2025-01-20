@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Table,
@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Download, Copy, Search, FileAudio, FolderPlus, Folder, ChevronRight, ChevronDown, MoreVertical } from 'lucide-react';
+import { Download, Copy, Search, FileAudio, FolderPlus, Folder, ChevronRight, ChevronDown, MoreVertical, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Database } from '@/integrations/supabase/types';
 import {
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FolderSelect } from './FolderSelect';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
   audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
@@ -41,6 +42,8 @@ export function TranscriptionHistory() {
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
   const [selectedTranscription, setSelectedTranscription] = useState<string | null>(null);
+  const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -232,7 +235,44 @@ export function TranscriptionHistory() {
     queryClient.invalidateQueries({ queryKey: ['transcriptions', 'unorganized'] });
   };
 
+  const renameFolderMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      console.log('Renaming folder:', { id, name });
+      const { error } = await supabase
+        .from('folders')
+        .update({ name })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      setRenamingFolder(null);
+      toast({
+        description: "Dossier renommé avec succès",
+      });
+    },
+    onError: (error) => {
+      console.error('Error renaming folder:', error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors du renommage du dossier",
+      });
+    },
+  });
+
+  const toggleFolder = (folderId: string) => {
+    const newOpenFolders = new Set(openFolders);
+    if (newOpenFolders.has(folderId)) {
+      newOpenFolders.delete(folderId);
+    } else {
+      newOpenFolders.add(folderId);
+    }
+    setOpenFolders(newOpenFolders);
+  };
+
   const renderFolderContents = (folder: Folder) => {
+    const isOpen = openFolders.has(folder.id);
     const filteredTranscriptions = folder.transcriptions?.filter(t =>
       t.transcription.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.audio_files?.filename.toLowerCase().includes(searchTerm.toLowerCase())
@@ -240,54 +280,106 @@ export function TranscriptionHistory() {
 
     return (
       <div className="space-y-4">
-        {folder.subfolders?.length > 0 && (
-          <div className="space-y-2">
-            {folder.subfolders.map((subfolder) => (
-              <div key={subfolder.id} className="pl-4">
-                <div className="flex items-center gap-2 p-2 hover:bg-accent rounded-lg cursor-pointer">
-                  <ChevronRight className="w-4 h-4" />
-                  <Folder className="w-4 h-4" />
-                  <span>{subfolder.name}</span>
-                </div>
-                {renderFolderContents(subfolder)}
-              </div>
-            ))}
-          </div>
-        )}
-        
-        {filteredTranscriptions?.length > 0 && (
-          <div className="pl-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fichier</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Transcription</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTranscriptions.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="flex items-center gap-2">
-                      <FileAudio className="w-4 h-4" />
-                      {t.audio_files?.filename}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(t.created_at), 'PPP', { locale: fr })}
-                    </TableCell>
-                    <TableCell className="max-w-md truncate">
-                      {t.transcription}
-                    </TableCell>
-                    <TableCell>
-                      {renderTranscriptionActions(t)}
-                    </TableCell>
-                  </TableRow>
+        <Collapsible open={isOpen} onOpenChange={() => toggleFolder(folder.id)}>
+          <CollapsibleTrigger className="flex items-center gap-2 p-2 hover:bg-accent rounded-lg cursor-pointer w-full">
+            {isOpen ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+            <Folder className="w-4 h-4" />
+            {renamingFolder?.id === folder.id ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (renamingFolder.name.trim()) {
+                    renameFolderMutation.mutate({
+                      id: folder.id,
+                      name: renamingFolder.name,
+                    });
+                  }
+                }}
+                className="flex-1"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Input
+                  value={renamingFolder.name}
+                  onChange={(e) =>
+                    setRenamingFolder({ ...renamingFolder, name: e.target.value })
+                  }
+                  autoFocus
+                  onBlur={() => {
+                    if (renamingFolder.name.trim()) {
+                      renameFolderMutation.mutate({
+                        id: folder.id,
+                        name: renamingFolder.name,
+                      });
+                    }
+                  }}
+                />
+              </form>
+            ) : (
+              <>
+                <span className="flex-1">{folder.name}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenamingFolder({ id: folder.id, name: folder.name });
+                  }}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {folder.subfolders?.length > 0 && (
+              <div className="space-y-2 pl-4">
+                {folder.subfolders.map((subfolder) => (
+                  <div key={subfolder.id}>
+                    {renderFolderContents(subfolder)}
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+              </div>
+            )}
+            
+            {filteredTranscriptions?.length > 0 && (
+              <div className="pl-4 mt-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fichier</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Transcription</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTranscriptions.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell className="flex items-center gap-2">
+                          <FileAudio className="w-4 h-4" />
+                          {t.audio_files?.filename}
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(t.created_at), 'PPP', { locale: fr })}
+                        </TableCell>
+                        <TableCell className="max-w-md truncate">
+                          {t.transcription}
+                        </TableCell>
+                        <TableCell>
+                          {renderTranscriptionActions(t)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
       </div>
     );
   };
@@ -372,11 +464,6 @@ export function TranscriptionHistory() {
       <div className="rounded-md border">
         {folders?.map((folder) => (
           <div key={folder.id} className="p-4">
-            <div className="flex items-center gap-2 p-2 hover:bg-accent rounded-lg cursor-pointer">
-              <ChevronDown className="w-4 h-4" />
-              <Folder className="w-4 h-4" />
-              <span className="font-medium">{folder.name}</span>
-            </div>
             {renderFolderContents(folder)}
           </div>
         ))}

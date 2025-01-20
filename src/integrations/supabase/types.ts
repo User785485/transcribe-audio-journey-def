@@ -70,6 +70,27 @@ export type Database = {
           },
         ]
       }
+      prompts: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          title: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          title: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          title?: string
+        }
+        Relationships: []
+      }
       transcriptions: {
         Row: {
           audio_file_id: string
