@@ -1,6 +1,6 @@
 import { Link, Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Upload, History, Settings, Scissors, FileType, FileText } from "lucide-react";
+import { Upload, History, Settings, Scissors, FileType, FileText, MessageSquare } from "lucide-react";
 
 export function Layout() {
   return (
@@ -39,6 +39,12 @@ export function Layout() {
               <Button variant="ghost" className="w-full justify-start">
                 <FileText className="mr-2 h-4 w-4" />
                 Prompts
+              </Button>
+            </Link>
+            <Link to="/whatsapp">
+              <Button variant="ghost" className="w-full justify-start">
+                <MessageSquare className="mr-2 h-4 w-4" />
+                WhatsApp
               </Button>
             </Link>
             <Link to="/settings">

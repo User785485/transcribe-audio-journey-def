@@ -1,30 +1,15 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import { Download, Copy, Search, FileAudio, FolderPlus, Folder, ChevronRight, ChevronDown, MoreVertical, Pencil } from 'lucide-react';
+import { Search, FolderPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Database } from '@/integrations/supabase/types';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FolderSelect } from './FolderSelect';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { FolderTree } from './TranscriptionList/FolderTree';
+import { FolderContents } from './TranscriptionList/FolderContents';
 
 type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
   audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
@@ -42,12 +27,10 @@ export function TranscriptionHistory() {
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
   const [selectedTranscription, setSelectedTranscription] = useState<string | null>(null);
-  const [renamingFolder, setRenamingFolder] = useState<{ id: string; name: string } | null>(null);
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch folders and their contents
   const { data: folders, isLoading: foldersLoading, refetch: refetchFolders } = useQuery({
     queryKey: ['folders'],
     queryFn: async () => {
@@ -60,7 +43,6 @@ export function TranscriptionHistory() {
 
       if (foldersError) throw foldersError;
 
-      // Fetch subfolders and contents recursively
       const foldersWithContents = await Promise.all(
         foldersData.map(async (folder) => {
           const contents = await fetchFolderContents(folder.id);
@@ -73,7 +55,6 @@ export function TranscriptionHistory() {
     },
   });
 
-  // Fetch transcriptions that are not in any folder
   const { data: unorganizedTranscriptions, isLoading: transcriptionsLoading } = useQuery({
     queryKey: ['transcriptions', 'unorganized'],
     queryFn: async () => {
@@ -159,39 +140,6 @@ export function TranscriptionHistory() {
     refetchFolders();
   };
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      description: "Texte copié dans le presse-papier",
-    });
-  };
-
-  const handleDownload = async (filePath: string, filename: string) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('audio')
-        .download(filePath);
-
-      if (error) throw error;
-
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Erreur lors du téléchargement:', error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de télécharger le fichier audio",
-      });
-    }
-  };
-
   const handleMoveToFolder = async (transcriptionId: string, folderId: string) => {
     console.log('Moving transcription to folder:', { transcriptionId, folderId });
     const { error } = await supabase
@@ -208,7 +156,6 @@ export function TranscriptionHistory() {
       return;
     }
 
-    // Also move the associated audio file
     const transcription = unorganizedTranscriptions?.find(t => t.id === transcriptionId);
     if (transcription?.audio_files?.id) {
       const { error: audioError } = await supabase
@@ -247,7 +194,6 @@ export function TranscriptionHistory() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['folders'] });
-      setRenamingFolder(null);
       toast({
         description: "Dossier renommé avec succès",
       });
@@ -270,155 +216,6 @@ export function TranscriptionHistory() {
     }
     setOpenFolders(newOpenFolders);
   };
-
-  const renderFolderContents = (folder: Folder) => {
-    const isOpen = openFolders.has(folder.id);
-    const filteredTranscriptions = folder.transcriptions?.filter(t =>
-      t.transcription.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.audio_files?.filename.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    return (
-      <div className="space-y-4">
-        <Collapsible open={isOpen} onOpenChange={() => toggleFolder(folder.id)}>
-          <CollapsibleTrigger className="flex items-center gap-2 p-2 hover:bg-accent rounded-lg cursor-pointer w-full">
-            {isOpen ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-            <Folder className="w-4 h-4" />
-            {renamingFolder?.id === folder.id ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (renamingFolder.name.trim()) {
-                    renameFolderMutation.mutate({
-                      id: folder.id,
-                      name: renamingFolder.name,
-                    });
-                  }
-                }}
-                className="flex-1"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Input
-                  value={renamingFolder.name}
-                  onChange={(e) =>
-                    setRenamingFolder({ ...renamingFolder, name: e.target.value })
-                  }
-                  autoFocus
-                  onBlur={() => {
-                    if (renamingFolder.name.trim()) {
-                      renameFolderMutation.mutate({
-                        id: folder.id,
-                        name: renamingFolder.name,
-                      });
-                    }
-                  }}
-                />
-              </form>
-            ) : (
-              <>
-                <span className="flex-1">{folder.name}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRenamingFolder({ id: folder.id, name: folder.name });
-                  }}
-                >
-                  <Pencil className="w-4 h-4" />
-                </Button>
-              </>
-            )}
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            {folder.subfolders?.length > 0 && (
-              <div className="space-y-2 pl-4">
-                {folder.subfolders.map((subfolder) => (
-                  <div key={subfolder.id}>
-                    {renderFolderContents(subfolder)}
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {filteredTranscriptions?.length > 0 && (
-              <div className="pl-4 mt-2">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fichier</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Transcription</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTranscriptions.map((t) => (
-                      <TableRow key={t.id}>
-                        <TableCell className="flex items-center gap-2">
-                          <FileAudio className="w-4 h-4" />
-                          {t.audio_files?.filename}
-                        </TableCell>
-                        <TableCell>
-                          {format(new Date(t.created_at), 'PPP', { locale: fr })}
-                        </TableCell>
-                        <TableCell className="max-w-md truncate">
-                          {t.transcription}
-                        </TableCell>
-                        <TableCell>
-                          {renderTranscriptionActions(t)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
-    );
-  };
-
-  const renderTranscriptionActions = (t: Transcription) => (
-    <div className="flex space-x-2">
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => handleCopy(t.transcription)}
-        title="Copier la transcription"
-      >
-        <Copy className="h-4 w-4" />
-      </Button>
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
-        title="Télécharger l'audio"
-      >
-        <Download className="h-4 w-4" />
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon">
-            <MoreVertical className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => {
-            setSelectedTranscription(t.id);
-            setIsFolderSelectOpen(true);
-          }}>
-            Déplacer vers...
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
 
   if (foldersLoading || transcriptionsLoading) {
     return <div className="flex justify-center p-8">Chargement...</div>;
@@ -464,42 +261,31 @@ export function TranscriptionHistory() {
       <div className="rounded-md border">
         {folders?.map((folder) => (
           <div key={folder.id} className="p-4">
-            {renderFolderContents(folder)}
+            <FolderTree
+              folder={folder}
+              searchTerm={searchTerm}
+              onMoveToFolder={(transcriptionId) => {
+                setSelectedTranscription(transcriptionId);
+                setIsFolderSelectOpen(true);
+              }}
+              onRenameFolder={(id, name) => renameFolderMutation.mutate({ id, name })}
+              openFolders={openFolders}
+              onToggleFolder={toggleFolder}
+            />
           </div>
         ))}
 
         {unorganizedTranscriptions && unorganizedTranscriptions.length > 0 && (
           <div className="p-4">
             <div className="font-medium mb-4">Fichiers non classés</div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fichier</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Transcription</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unorganizedTranscriptions.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="flex items-center gap-2">
-                      <FileAudio className="w-4 h-4" />
-                      {t.audio_files?.filename}
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(t.created_at), 'PPP', { locale: fr })}
-                    </TableCell>
-                    <TableCell className="max-w-md truncate">
-                      {t.transcription}
-                    </TableCell>
-                    <TableCell>
-                      {renderTranscriptionActions(t)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <FolderContents
+              transcriptions={unorganizedTranscriptions}
+              onMoveToFolder={(transcriptionId) => {
+                setSelectedTranscription(transcriptionId);
+                setIsFolderSelectOpen(true);
+              }}
+              searchTerm={searchTerm}
+            />
           </div>
         )}
       </div>
