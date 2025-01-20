@@ -9,6 +9,7 @@ import { TranscriptionUploader } from "./components/TranscriptionUploader";
 import { TranscriptionHistory } from "./components/TranscriptionHistory";
 import { Settings } from "./components/Settings";
 import { AudioSplitter } from "./components/AudioSplitter";
+import FileConverter from "./components/FileConverter";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +25,7 @@ const App = () => (
               <Route index element={<TranscriptionUploader />} />
               <Route path="dashboard" element={<TranscriptionUploader />} />
               <Route path="split" element={<AudioSplitter />} />
+              <Route path="convert" element={<FileConverter />} />
               <Route path="history" element={<TranscriptionHistory />} />
               <Route path="settings" element={<Settings />} />
             </Route>
