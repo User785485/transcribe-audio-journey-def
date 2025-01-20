@@ -123,6 +123,19 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
     t.audio_files?.file_type === activeTab
   );
 
+  const getTabTitle = (type: string) => {
+    switch (type) {
+      case 'to_convert':
+        return 'À convertir';
+      case 'converted':
+        return 'Convertis';
+      case 'transcription':
+        return 'Transcriptions';
+      default:
+        return type;
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-4">
@@ -143,7 +156,7 @@ export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, fol
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Ajouter un fichier</DialogTitle>
+                  <DialogTitle>Ajouter un fichier {getTabTitle(activeTab).toLowerCase()}</DialogTitle>
                 </DialogHeader>
                 <div {...getRootProps()} className="border-2 border-dashed rounded-lg p-6 cursor-pointer hover:border-primary transition-colors">
                   <input {...getInputProps()} />
