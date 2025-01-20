@@ -40,7 +40,7 @@ export function TranscriptionHistory() {
     retryDelay: 1000,
   });
 
-  const { data: folders, error: foldersError } = useQuery({
+  const { data: folders } = useQuery({
     queryKey: ['folders'],
     queryFn: async () => {
       console.log('🔍 Fetching folders...');
@@ -63,8 +63,6 @@ export function TranscriptionHistory() {
         throw error;
       }
     },
-    retry: 3,
-    retryDelay: 1000,
   });
 
   const moveToFolderMutation = useMutation({
@@ -103,22 +101,20 @@ export function TranscriptionHistory() {
 
         // 4. Create audio_files entry
         console.log('📝 Creating audio_files entry...');
-        const { data: fileData, error: fileError } = await supabase
+        const { error: fileError } = await supabase
           .from('audio_files')
           .insert({
             filename: transcriptionFileName,
             file_path: transcriptionPath,
             file_type: 'text',
             folder_id: folderId
-          })
-          .select()
-          .single();
+          });
 
         if (fileError) {
           console.error('❌ Failed to create audio_files entry:', fileError);
           throw fileError;
         }
-        console.log('✅ Audio files entry created:', fileData);
+        console.log('✅ Audio files entry created');
 
         // 5. Get folder name for history update
         console.log('🔍 Getting folder name...');
@@ -147,7 +143,7 @@ export function TranscriptionHistory() {
         }
         console.log('✅ History entry updated');
 
-        return { fileData, folderName: folderData.name };
+        return { folderName: folderData.name };
       } catch (error) {
         console.error('🚨 Critical error during move operation:', error);
         throw error;
@@ -156,6 +152,7 @@ export function TranscriptionHistory() {
     onSuccess: () => {
       console.log('🎉 Move operation completed successfully');
       queryClient.invalidateQueries({ queryKey: ['transcription-history'] });
+      queryClient.invalidateQueries({ queryKey: ['folder-files'] });
       toast({
         description: "Transcription déplacée avec succès",
       });
@@ -170,11 +167,6 @@ export function TranscriptionHistory() {
       });
     }
   });
-
-  if (historyError || foldersError) {
-    console.error('🚨 Error loading data:', { historyError, foldersError });
-    return <div>Erreur de chargement des données. Veuillez rafraîchir la page.</div>;
-  }
 
   const handleMoveToFolder = async (folderId: string) => {
     if (!selectedItemId) {
@@ -191,6 +183,11 @@ export function TranscriptionHistory() {
     console.log('🎯 Moving item to folder:', { historyItem, folderId });
     await moveToFolderMutation.mutate({ historyItem, folderId });
   };
+
+  if (historyError) {
+    console.error('🚨 Error loading history:', historyError);
+    return <div>Erreur de chargement des données. Veuillez rafraîchir la page.</div>;
+  }
 
   return (
     <div>
