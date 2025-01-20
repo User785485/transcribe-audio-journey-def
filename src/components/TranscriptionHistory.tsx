@@ -12,45 +12,59 @@ export function TranscriptionHistory() {
   const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: historyItems, refetch } = useQuery({
+  const { data: historyItems, error: historyError } = useQuery({
     queryKey: ['transcription-history'],
     queryFn: async () => {
       console.log('🔍 Fetching transcription history...');
-      const { data, error } = await supabase
-        .from('history')
-        .select('*')
-        .eq('file_type', 'transcription')
-        .order('created_at', { ascending: false })
-        .limit(5);
+      try {
+        const { data, error } = await supabase
+          .from('history')
+          .select('*')
+          .eq('file_type', 'transcription')
+          .order('created_at', { ascending: false })
+          .limit(5);
 
-      if (error) {
-        console.error('❌ Error fetching history:', error);
+        if (error) {
+          console.error('❌ Error fetching history:', error);
+          throw error;
+        }
+
+        console.log('✅ History items fetched:', data);
+        return data;
+      } catch (error) {
+        console.error('🚨 Critical error fetching history:', error);
         throw error;
       }
-
-      console.log('✅ History items fetched:', data);
-      return data;
     },
+    retry: 3,
+    retryDelay: 1000,
   });
 
-  const { data: folders } = useQuery({
+  const { data: folders, error: foldersError } = useQuery({
     queryKey: ['folders'],
     queryFn: async () => {
       console.log('🔍 Fetching folders...');
-      const { data, error } = await supabase
-        .from('folders')
-        .select('*')
-        .is('parent_id', null)
-        .order('created_at', { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from('folders')
+          .select('*')
+          .is('parent_id', null)
+          .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Error fetching folders:', error);
+        if (error) {
+          console.error('❌ Error fetching folders:', error);
+          throw error;
+        }
+
+        console.log('✅ Folders fetched:', data);
+        return data;
+      } catch (error) {
+        console.error('🚨 Critical error fetching folders:', error);
         throw error;
       }
-
-      console.log('✅ Folders fetched:', data);
-      return data;
     },
+    retry: 3,
+    retryDelay: 1000,
   });
 
   const moveToFolderMutation = useMutation({
@@ -62,77 +76,82 @@ export function TranscriptionHistory() {
         throw new Error('Pas de transcription trouvée');
       }
 
-      // 1. Create text file name
-      const transcriptionFileName = `${historyItem.filename.split('.')[0]}_transcription.txt`;
-      const transcriptionPath = `${folderId}/${transcriptionFileName}`;
-      console.log('📝 Will create file:', { transcriptionFileName, transcriptionPath });
+      try {
+        // 1. Create text file name
+        const transcriptionFileName = `${historyItem.filename.split('.')[0]}_transcription.txt`;
+        const transcriptionPath = `${folderId}/${transcriptionFileName}`;
+        console.log('📝 Will create file:', { transcriptionFileName, transcriptionPath });
 
-      // 2. Create text file blob
-      const transcriptionBlob = new Blob([historyItem.transcription], { type: 'text/plain' });
-      console.log('📦 Created blob:', { size: transcriptionBlob.size });
+        // 2. Create text file blob
+        const transcriptionBlob = new Blob([historyItem.transcription], { type: 'text/plain' });
+        console.log('📦 Created blob:', { size: transcriptionBlob.size });
 
-      // 3. Upload to storage
-      console.log('📤 Uploading to storage...');
-      const { error: storageError } = await supabase.storage
-        .from('audio')
-        .upload(transcriptionPath, transcriptionBlob, {
-          contentType: 'text/plain',
-          upsert: true
-        });
+        // 3. Upload to storage
+        console.log('📤 Uploading to storage...');
+        const { error: storageError } = await supabase.storage
+          .from('audio')
+          .upload(transcriptionPath, transcriptionBlob, {
+            contentType: 'text/plain',
+            upsert: true
+          });
 
-      if (storageError) {
-        console.error('❌ Storage upload failed:', storageError);
-        throw storageError;
+        if (storageError) {
+          console.error('❌ Storage upload failed:', storageError);
+          throw storageError;
+        }
+        console.log('✅ File uploaded to storage');
+
+        // 4. Create audio_files entry
+        console.log('📝 Creating audio_files entry...');
+        const { data: fileData, error: fileError } = await supabase
+          .from('audio_files')
+          .insert({
+            filename: transcriptionFileName,
+            file_path: transcriptionPath,
+            file_type: 'text',
+            folder_id: folderId
+          })
+          .select()
+          .single();
+
+        if (fileError) {
+          console.error('❌ Failed to create audio_files entry:', fileError);
+          throw fileError;
+        }
+        console.log('✅ Audio files entry created:', fileData);
+
+        // 5. Get folder name for history update
+        console.log('🔍 Getting folder name...');
+        const { data: folderData, error: folderError } = await supabase
+          .from('folders')
+          .select('name')
+          .eq('id', folderId)
+          .single();
+
+        if (folderError) {
+          console.error('❌ Failed to get folder name:', folderError);
+          throw folderError;
+        }
+        console.log('✅ Got folder name:', folderData.name);
+
+        // 6. Update history entry
+        console.log('📝 Updating history entry...');
+        const { error: historyError } = await supabase
+          .from('history')
+          .update({ folder_name: folderData.name })
+          .eq('id', historyItem.id);
+
+        if (historyError) {
+          console.error('❌ Failed to update history:', historyError);
+          throw historyError;
+        }
+        console.log('✅ History entry updated');
+
+        return { fileData, folderName: folderData.name };
+      } catch (error) {
+        console.error('🚨 Critical error during move operation:', error);
+        throw error;
       }
-      console.log('✅ File uploaded to storage');
-
-      // 4. Create audio_files entry
-      console.log('📝 Creating audio_files entry...');
-      const { data: fileData, error: fileError } = await supabase
-        .from('audio_files')
-        .insert({
-          filename: transcriptionFileName,
-          file_path: transcriptionPath,
-          file_type: 'text',
-          folder_id: folderId
-        })
-        .select()
-        .single();
-
-      if (fileError) {
-        console.error('❌ Failed to create audio_files entry:', fileError);
-        throw fileError;
-      }
-      console.log('✅ Audio files entry created:', fileData);
-
-      // 5. Get folder name for history update
-      console.log('🔍 Getting folder name...');
-      const { data: folderData, error: folderError } = await supabase
-        .from('folders')
-        .select('name')
-        .eq('id', folderId)
-        .single();
-
-      if (folderError) {
-        console.error('❌ Failed to get folder name:', folderError);
-        throw folderError;
-      }
-      console.log('✅ Got folder name:', folderData.name);
-
-      // 6. Update history entry
-      console.log('📝 Updating history entry...');
-      const { error: historyError } = await supabase
-        .from('history')
-        .update({ folder_name: folderData.name })
-        .eq('id', historyItem.id);
-
-      if (historyError) {
-        console.error('❌ Failed to update history:', historyError);
-        throw historyError;
-      }
-      console.log('✅ History entry updated');
-
-      return { fileData, folderName: folderData.name };
     },
     onSuccess: () => {
       console.log('🎉 Move operation completed successfully');
@@ -151,6 +170,11 @@ export function TranscriptionHistory() {
       });
     }
   });
+
+  if (historyError || foldersError) {
+    console.error('🚨 Error loading data:', { historyError, foldersError });
+    return <div>Erreur de chargement des données. Veuillez rafraîchir la page.</div>;
+  }
 
   const handleMoveToFolder = async (folderId: string) => {
     if (!selectedItemId) {
