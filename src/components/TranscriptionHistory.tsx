@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Download, Copy, Search } from 'lucide-react';
+import { Download, Copy, Search, FileAudio } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export function TranscriptionHistory() {
@@ -29,7 +29,8 @@ export function TranscriptionHistory() {
           *,
           audio_files (
             filename,
-            created_at
+            created_at,
+            file_path
           )
         `)
         .order('created_at', { ascending: false });
@@ -51,16 +52,30 @@ export function TranscriptionHistory() {
     });
   };
 
-  const handleDownload = (text: string, filename: string) => {
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${filename.split('.')[0]}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+  const handleDownload = async (filePath: string, filename: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('audio')
+        .download(filePath);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Erreur lors du téléchargement:', error);
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible de télécharger le fichier audio",
+      });
+    }
   };
 
   if (isLoading) {
@@ -68,7 +83,7 @@ export function TranscriptionHistory() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-4">
       <div className="flex items-center space-x-2">
         <Search className="w-4 h-4 text-muted-foreground" />
         <Input
@@ -92,7 +107,10 @@ export function TranscriptionHistory() {
           <TableBody>
             {filteredTranscriptions?.map((t) => (
               <TableRow key={t.id}>
-                <TableCell>{t.audio_files?.filename}</TableCell>
+                <TableCell className="flex items-center gap-2">
+                  <FileAudio className="w-4 h-4" />
+                  {t.audio_files?.filename}
+                </TableCell>
                 <TableCell>
                   {format(new Date(t.created_at), 'PPP', { locale: fr })}
                 </TableCell>
@@ -105,13 +123,15 @@ export function TranscriptionHistory() {
                       variant="outline"
                       size="icon"
                       onClick={() => handleCopy(t.transcription)}
+                      title="Copier la transcription"
                     >
                       <Copy className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => handleDownload(t.transcription, t.audio_files?.filename)}
+                      onClick={() => t.audio_files && handleDownload(t.audio_files.file_path, t.audio_files.filename)}
+                      title="Télécharger l'audio"
                     >
                       <Download className="h-4 w-4" />
                     </Button>

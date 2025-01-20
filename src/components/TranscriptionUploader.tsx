@@ -5,8 +5,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { DropZone } from "./DropZone";
+import { useNavigate } from "react-router-dom";
 
-const SUPPORTED_FORMATS = {
+export const SUPPORTED_FORMATS = {
   'audio/flac': ['.flac'],
   'audio/m4a': ['.m4a'],
   'audio/mpeg': ['.mp3', '.mpeg', '.mpga'],
@@ -17,90 +18,7 @@ const SUPPORTED_FORMATS = {
   'audio/opus': ['.opus']
 };
 
-// Reduced to 24MB to account for potential overhead
-const CHUNK_SIZE = 24 * 1024 * 1024;
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB Whisper API limit
-
-async function convertOpusToMp3(opusBlob: Blob): Promise<Blob> {
-  console.log('Starting Opus to MP3 conversion...');
-  
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-  
-  const arrayBuffer = await opusBlob.arrayBuffer();
-  console.log('Opus file loaded into ArrayBuffer');
-  
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-  console.log('Audio successfully decoded', {
-    numberOfChannels: audioBuffer.numberOfChannels,
-    sampleRate: audioBuffer.sampleRate,
-    length: audioBuffer.length
-  });
-  
-  const offlineAudioContext = new OfflineAudioContext({
-    numberOfChannels: audioBuffer.numberOfChannels,
-    length: audioBuffer.length,
-    sampleRate: 44100,
-  });
-  
-  const source = offlineAudioContext.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(offlineAudioContext.destination);
-  
-  source.start();
-  const renderedBuffer = await offlineAudioContext.startRendering();
-  console.log('Audio rendered successfully');
-  
-  const numberOfChannels = renderedBuffer.numberOfChannels;
-  const length = renderedBuffer.length;
-  const sampleRate = renderedBuffer.sampleRate;
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * numberOfChannels * (bitsPerSample / 8);
-  const blockAlign = numberOfChannels * (bitsPerSample / 8);
-  const wavDataLength = length * numberOfChannels * (bitsPerSample / 8);
-  
-  const buffer = new ArrayBuffer(44 + wavDataLength);
-  const view = new DataView(buffer);
-  
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + wavDataLength, true);
-  writeString(view, 8, 'WAVE');
-  
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numberOfChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-  
-  writeString(view, 36, 'data');
-  view.setUint32(40, wavDataLength, true);
-  
-  const samples = new Float32Array(length * numberOfChannels);
-  for (let channel = 0; channel < numberOfChannels; channel++) {
-    const channelData = renderedBuffer.getChannelData(channel);
-    for (let i = 0; i < length; i++) {
-      samples[i * numberOfChannels + channel] = channelData[i];
-    }
-  }
-  
-  const offset = 44;
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(offset + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-  
-  console.log('WAV file created successfully');
-  
-  return new Blob([buffer], { type: 'audio/wav' });
-}
-
-function writeString(view: DataView, offset: number, string: string) {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
-}
+const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
 
 interface TranscriptionProgress {
   id: string;
@@ -114,9 +32,21 @@ interface TranscriptionProgress {
 export function TranscriptionUploader() {
   const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress[]>([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const processFile = async (file: File) => {
     const id = crypto.randomUUID();
+    
+    // Si le fichier est trop gros, rediriger vers la page de découpage
+    if (file.size > MAX_TRANSCRIPTION_SIZE) {
+      toast({
+        title: "Fichier trop volumineux",
+        description: "Redirection vers l'outil de découpage...",
+      });
+      navigate("/split");
+      return;
+    }
+
     setTranscriptionProgress(prev => [...prev, {
       id,
       filename: file.name,
@@ -125,33 +55,9 @@ export function TranscriptionUploader() {
     }]);
 
     try {
-      let fileToUpload = file;
+      const formData = new FormData();
+      formData.append('file', file);
       
-      // Check file size before processing
-      if (file.size > MAX_FILE_SIZE) {
-        throw new Error(`Le fichier est trop volumineux. La taille maximale est de ${Math.round(MAX_FILE_SIZE / (1024 * 1024))}MB`);
-      }
-
-      if (file.type === 'audio/opus') {
-        setTranscriptionProgress(prev => prev.map(p => 
-          p.id === id ? { ...p, status: 'transcribing', progress: 10 } : p
-        ));
-        const wavBlob = await convertOpusToMp3(file);
-        fileToUpload = new File([wavBlob], file.name.replace('.opus', '.wav'), {
-          type: 'audio/wav'
-        });
-      }
-
-      // Get file extension and MIME type
-      const fileExt = fileToUpload.name.split('.').pop()?.toLowerCase();
-      const mimeType = Object.entries(SUPPORTED_FORMATS).find(([, exts]) => 
-        exts.some(ext => ext.endsWith(fileExt || ''))
-      )?.[0];
-
-      if (!fileExt || !mimeType) {
-        throw new Error(`Format de fichier non supporté: ${fileExt}`);
-      }
-
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
           ...p,
@@ -160,15 +66,11 @@ export function TranscriptionUploader() {
         } : p
       ));
 
-      const formData = new FormData();
-      formData.append('file', fileToUpload);
-      
       const { data, error } = await supabase.functions.invoke('transcribe-simple', {
         body: formData,
       });
 
       if (error) {
-        console.error('Error during transcription:', error);
         throw new Error(error.message || 'Une erreur est survenue');
       }
 
@@ -220,8 +122,7 @@ export function TranscriptionUploader() {
       <div className="text-center space-y-2">
         <h2 className="text-2xl font-bold">Nouvelle transcription</h2>
         <p className="text-muted-foreground">
-          Pour les fichiers de moins de 25MB uniquement. Pour les fichiers plus volumineux, 
-          utilisez la page "Découper et transcrire".
+          Déposez vos fichiers audio ici. Les fichiers de plus de 25MB seront automatiquement redirigés vers l'outil de découpage.
         </p>
       </div>
 
