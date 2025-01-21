@@ -2,15 +2,6 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -20,9 +11,11 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { PromptItem } from "./prompts/PromptItem";
+import { PromptDialog } from "./prompts/PromptDialog";
 
 export function Prompts() {
   const [isOpen, setIsOpen] = useState(false);
@@ -32,7 +25,6 @@ export function Prompts() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [promptToDelete, setPromptToDelete] = useState<string | null>(null);
-  const [expandedPrompts, setExpandedPrompts] = useState<string[]>([]);
   const [editingPrompt, setEditingPrompt] = useState<{
     id: string;
     title: string;
@@ -40,7 +32,6 @@ export function Prompts() {
   } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
 
   useEffect(() => {
     const savedAuth = sessionStorage.getItem("prompts_authenticated");
@@ -48,14 +39,6 @@ export function Prompts() {
       setIsAuthenticated(true);
     }
   }, []);
-
-  const togglePrompt = (id: string) => {
-    setExpandedPrompts(prev => 
-      prev.includes(id) 
-        ? prev.filter(promptId => promptId !== id)
-        : [...prev, id]
-    );
-  };
 
   const handlePasswordSubmit = () => {
     if (password === "1989") {
@@ -77,7 +60,7 @@ export function Prompts() {
         const { data, error } = await supabase
           .from("prompts")
           .select("*")
-          .order("created_at", { ascending: false });
+          .order("order", { ascending: true });
 
         if (error) {
           console.error("Error fetching prompts:", error);
@@ -96,9 +79,10 @@ export function Prompts() {
   const createPromptMutation = useMutation({
     mutationFn: async (values: { title: string; content: string }) => {
       console.log("Creating prompt:", values);
+      const maxOrder = prompts ? Math.max(...prompts.map(p => p.order), 0) : 0;
       const { data, error } = await supabase
         .from("prompts")
-        .insert([values]);
+        .insert([{ ...values, order: maxOrder + 1 }]);
       if (error) throw error;
       return data;
     },
@@ -245,134 +229,72 @@ export function Prompts() {
     <div className="p-4 space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Prompts</h2>
-        <Dialog open={isOpen} onOpenChange={(open) => {
+        <Button onClick={() => setIsOpen(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          Nouveau Prompt
+        </Button>
+      </div>
+
+      <div className="grid gap-4">
+        {prompts?.map((prompt, index) => (
+          <PromptItem
+            key={prompt.id}
+            prompt={prompt}
+            onEdit={handleEdit}
+            onDelete={(id) => setPromptToDelete(id)}
+            isFirst={index === 0}
+            isLast={index === (prompts?.length || 0) - 1}
+          />
+        ))}
+      </div>
+
+      <PromptDialog
+        isOpen={isOpen}
+        onOpenChange={(open) => {
           setIsOpen(open);
           if (!open) {
             setEditingPrompt(null);
             setTitle("");
             setContent("");
           }
-        }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Nouveau Prompt
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingPrompt ? "Modifier le prompt" : "Nouveau prompt"}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="title" className="text-sm font-medium">
-                  Titre
-                </label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Titre du prompt"
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="content" className="text-sm font-medium">
-                  Contenu
-                </label>
-                <Textarea
-                  id="content"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Contenu du prompt"
-                  rows={5}
-                />
-              </div>
-              <Button onClick={handleSubmit} className="w-full">
-                {editingPrompt ? "Mettre à jour" : "Créer"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+        }}
+        title={title}
+        content={content}
+        onTitleChange={setTitle}
+        onContentChange={setContent}
+        onSubmit={handleSubmit}
+        isEditing={!!editingPrompt}
+      />
 
-      <div className="grid gap-4">
-        {prompts?.map((prompt) => (
-          <div
-            key={prompt.id}
-            className="p-4 border rounded-lg space-y-2 bg-background"
-          >
-            <div className="flex justify-between items-start">
-              <div className="flex items-center space-x-2 flex-1">
-                <h3 className="font-medium">{prompt.title}</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => togglePrompt(prompt.id)}
-                  className="ml-2"
-                >
-                  {expandedPrompts.includes(prompt.id) ? (
-                    <ChevronUp className="w-4 h-4" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
-              <div className="flex space-x-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleEdit(prompt)}
-                >
-                  <Pencil className="w-4 h-4" />
-                </Button>
-                <AlertDialog open={promptToDelete === prompt.id}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setPromptToDelete(prompt.id)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Cette action est irréversible. Écrivez "confirmer" pour supprimer ce prompt.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <Input
-                      value={deleteConfirmation}
-                      onChange={(e) => setDeleteConfirmation(e.target.value)}
-                      placeholder='Écrivez "confirmer"'
-                    />
-                    <AlertDialogFooter>
-                      <AlertDialogCancel onClick={() => {
-                        setPromptToDelete(null);
-                        setDeleteConfirmation("");
-                      }}>
-                        Annuler
-                      </AlertDialogCancel>
-                      <Button
-                        variant="destructive"
-                        onClick={() => handleDelete(prompt.id)}
-                      >
-                        Supprimer
-                      </Button>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            </div>
-            {expandedPrompts.includes(prompt.id) && (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-2 p-2 bg-muted rounded-md">
-                {prompt.content}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
+      <AlertDialog open={!!promptToDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Écrivez "confirmer" pour supprimer ce prompt.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            value={deleteConfirmation}
+            onChange={(e) => setDeleteConfirmation(e.target.value)}
+            placeholder='Écrivez "confirmer"'
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setPromptToDelete(null);
+              setDeleteConfirmation("");
+            }}>
+              Annuler
+            </AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={() => promptToDelete && handleDelete(promptToDelete)}
+            >
+              Supprimer
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
