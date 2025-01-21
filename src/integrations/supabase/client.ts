@@ -17,13 +17,18 @@ export const supabase = createClient<Database>(
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-    }
+    },
+    global: {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    },
   }
 );
 
 // Test de connexion
 supabase
-  .from('folders')
+  .from('prompts')
   .select('*')
   .limit(1)
   .then(response => {
@@ -32,4 +37,7 @@ supabase
     } else {
       console.log('✅ Supabase connection test successful');
     }
+  })
+  .catch(error => {
+    console.error('❌ Supabase connection test error:', error);
   });

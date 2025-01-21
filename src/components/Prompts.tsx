@@ -69,18 +69,27 @@ export function Prompts() {
     }
   };
 
-  const { data: prompts, isLoading } = useQuery({
+  const { data: prompts, isLoading, error } = useQuery({
     queryKey: ["prompts"],
     queryFn: async () => {
       console.log("Fetching prompts...");
-      const { data, error } = await supabase
-        .from("prompts")
-        .select("*")
-        .order("created_at", { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from("prompts")
+          .select("*")
+          .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      console.log("Prompts fetched:", data);
-      return data;
+        if (error) {
+          console.error("Error fetching prompts:", error);
+          throw error;
+        }
+        
+        console.log("Prompts fetched:", data);
+        return data;
+      } catch (err) {
+        console.error("Failed to fetch prompts:", err);
+        throw err;
+      }
     },
   });
 
@@ -221,6 +230,15 @@ export function Prompts() {
 
   if (isLoading) {
     return <div className="p-4">Chargement...</div>;
+  }
+
+  if (error) {
+    console.error("Error in prompts query:", error);
+    return (
+      <div className="p-4 text-red-500">
+        Une erreur est survenue lors du chargement des prompts. Veuillez réessayer.
+      </div>
+    );
   }
 
   return (
