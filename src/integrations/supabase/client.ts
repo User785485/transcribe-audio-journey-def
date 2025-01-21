@@ -26,18 +26,20 @@ export const supabase = createClient<Database>(
   }
 );
 
-// Test de connexion
-supabase
-  .from('prompts')
-  .select('*')
-  .limit(1)
-  .then(response => {
-    if (response.error) {
-      console.error('❌ Supabase connection test failed:', response.error);
-    } else {
-      console.log('✅ Supabase connection test successful');
-    }
-  })
-  .catch(error => {
-    console.error('❌ Supabase connection test error:', error);
-  });
+// Test de connexion avec Promise explicite
+Promise.resolve(
+  supabase
+    .from('prompts')
+    .select('*')
+    .limit(1)
+)
+.then(response => {
+  if (response.error) {
+    console.error('❌ Supabase connection test failed:', response.error);
+  } else {
+    console.log('✅ Supabase connection test successful');
+  }
+})
+.catch(error => {
+  console.error('❌ Supabase connection test error:', error);
+});
