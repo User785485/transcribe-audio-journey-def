@@ -20,7 +20,7 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 
@@ -32,6 +32,7 @@ export function Prompts() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [promptToDelete, setPromptToDelete] = useState<string | null>(null);
+  const [expandedPrompts, setExpandedPrompts] = useState<string[]>([]);
   const [editingPrompt, setEditingPrompt] = useState<{
     id: string;
     title: string;
@@ -47,6 +48,14 @@ export function Prompts() {
       setIsAuthenticated(true);
     }
   }, []);
+
+  const togglePrompt = (id: string) => {
+    setExpandedPrompts(prev => 
+      prev.includes(id) 
+        ? prev.filter(promptId => promptId !== id)
+        : [...prev, id]
+    );
+  };
 
   const handlePasswordSubmit = () => {
     if (password === "1989") {
@@ -277,7 +286,21 @@ export function Prompts() {
             className="p-4 border rounded-lg space-y-2 bg-background"
           >
             <div className="flex justify-between items-start">
-              <h3 className="font-medium">{prompt.title}</h3>
+              <div className="flex items-center space-x-2 flex-1">
+                <h3 className="font-medium">{prompt.title}</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => togglePrompt(prompt.id)}
+                  className="ml-2"
+                >
+                  {expandedPrompts.includes(prompt.id) ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
               <div className="flex space-x-2">
                 <Button
                   variant="ghost"
@@ -324,9 +347,11 @@ export function Prompts() {
                 </AlertDialog>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              {prompt.content}
-            </p>
+            {expandedPrompts.includes(prompt.id) && (
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap mt-2 p-2 bg-muted rounded-md">
+                {prompt.content}
+              </p>
+            )}
           </div>
         ))}
       </div>
