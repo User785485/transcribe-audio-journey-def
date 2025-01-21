@@ -1,9 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Pencil, Trash2, GripVertical } from "lucide-react";
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+import { CSS } from "@dnd-kit/utilities";
+import { useSortable } from "@dnd-kit/sortable";
 
 interface PromptItemProps {
   prompt: {
@@ -14,58 +13,43 @@ interface PromptItemProps {
   };
   onEdit: (prompt: { id: string; title: string; content: string }) => void;
   onDelete: (id: string) => void;
-  isFirst: boolean;
-  isLast: boolean;
 }
 
-export const PromptItem = ({ prompt, onEdit, onDelete, isFirst, isLast }: PromptItemProps) => {
+export const PromptItem = ({ prompt, onEdit, onDelete }: PromptItemProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+  
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: prompt.id });
 
-  const updateOrderMutation = useMutation({
-    mutationFn: async ({ id, newOrder }: { id: string; newOrder: number }) => {
-      console.log("Updating order for prompt:", id, "to:", newOrder);
-      const { data, error } = await supabase
-        .from("prompts")
-        .update({ order: newOrder })
-        .eq("id", id);
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompts"] });
-      toast({
-        description: "Ordre mis à jour avec succès",
-      });
-    },
-    onError: (error) => {
-      console.error("Error updating order:", error);
-      toast({
-        variant: "destructive",
-        description: "Erreur lors de la mise à jour de l'ordre",
-      });
-    },
-  });
-
-  const handleMoveUp = () => {
-    updateOrderMutation.mutate({
-      id: prompt.id,
-      newOrder: prompt.order - 1,
-    });
-  };
-
-  const handleMoveDown = () => {
-    updateOrderMutation.mutate({
-      id: prompt.id,
-      newOrder: prompt.order + 1,
-    });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
   };
 
   return (
-    <div className="p-4 border rounded-lg space-y-2 bg-background">
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className="p-4 border rounded-lg space-y-2 bg-background"
+    >
       <div className="flex justify-between items-start">
         <div className="flex items-center space-x-2 flex-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="cursor-grab"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="w-4 h-4" />
+          </Button>
           <h3 className="font-medium">{prompt.title}</h3>
           <Button
             variant="ghost"
@@ -73,24 +57,10 @@ export const PromptItem = ({ prompt, onEdit, onDelete, isFirst, isLast }: Prompt
             onClick={() => setIsExpanded(!isExpanded)}
             className="ml-2"
           >
-            {isExpanded ? (
-              <ChevronUp className="w-4 h-4" />
-            ) : (
-              <ChevronDown className="w-4 h-4" />
-            )}
+            {isExpanded ? "Réduire" : "Voir plus"}
           </Button>
         </div>
         <div className="flex space-x-2">
-          {!isFirst && (
-            <Button variant="ghost" size="icon" onClick={handleMoveUp}>
-              <ChevronUp className="w-4 h-4" />
-            </Button>
-          )}
-          {!isLast && (
-            <Button variant="ghost" size="icon" onClick={handleMoveDown}>
-              <ChevronDown className="w-4 h-4" />
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="icon"

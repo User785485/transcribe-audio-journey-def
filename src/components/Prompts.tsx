@@ -16,6 +16,21 @@ import { Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PromptItem } from "./prompts/PromptItem";
 import { PromptDialog } from "./prompts/PromptDialog";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 export function Prompts() {
   const [isOpen, setIsOpen] = useState(false);
@@ -32,6 +47,13 @@ export function Prompts() {
   } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     const savedAuth = sessionStorage.getItem("prompts_authenticated");
@@ -75,6 +97,57 @@ export function Prompts() {
       }
     },
   });
+
+  const updateOrderMutation = useMutation({
+    mutationFn: async ({ id, newOrder }: { id: string; newOrder: number }) => {
+      console.log("Updating order for prompt:", id, "to:", newOrder);
+      const { data, error } = await supabase
+        .from("prompts")
+        .update({ order: newOrder })
+        .eq("id", id);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prompts"] });
+      toast({
+        description: "Ordre mis à jour avec succès",
+      });
+    },
+    onError: (error) => {
+      console.error("Error updating order:", error);
+      toast({
+        variant: "destructive",
+        description: "Erreur lors de la mise à jour de l'ordre",
+      });
+    },
+  });
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (!over || active.id === over.id || !prompts) {
+      return;
+    }
+
+    const oldIndex = prompts.findIndex((p) => p.id === active.id);
+    const newIndex = prompts.findIndex((p) => p.id === over.id);
+    
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const newPrompts = arrayMove(prompts, oldIndex, newIndex);
+      
+      // Update orders in database
+      newPrompts.forEach((prompt, index) => {
+        updateOrderMutation.mutate({
+          id: prompt.id,
+          newOrder: index + 1,
+        });
+      });
+
+      // Optimistically update the cache
+      queryClient.setQueryData(["prompts"], newPrompts);
+    }
+  };
 
   const createPromptMutation = useMutation({
     mutationFn: async (values: { title: string; content: string }) => {
@@ -217,7 +290,6 @@ export function Prompts() {
   }
 
   if (error) {
-    console.error("Error in prompts query:", error);
     return (
       <div className="p-4 text-red-500">
         Une erreur est survenue lors du chargement des prompts. Veuillez réessayer.
@@ -235,18 +307,27 @@ export function Prompts() {
         </Button>
       </div>
 
-      <div className="grid gap-4">
-        {prompts?.map((prompt, index) => (
-          <PromptItem
-            key={prompt.id}
-            prompt={prompt}
-            onEdit={handleEdit}
-            onDelete={(id) => setPromptToDelete(id)}
-            isFirst={index === 0}
-            isLast={index === (prompts?.length || 0) - 1}
-          />
-        ))}
-      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={prompts?.map(p => p.id) ?? []}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="grid gap-4">
+            {prompts?.map((prompt) => (
+              <PromptItem
+                key={prompt.id}
+                prompt={prompt}
+                onEdit={handleEdit}
+                onDelete={(id) => setPromptToDelete(id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       <PromptDialog
         isOpen={isOpen}
