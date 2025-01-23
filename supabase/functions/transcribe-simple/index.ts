@@ -25,6 +25,13 @@ serve(async (req) => {
       throw new Error('Method not allowed');
     }
 
+    // Check if content type is multipart/form-data
+    const contentType = req.headers.get('content-type');
+    if (!contentType || !contentType.includes('multipart/form-data')) {
+      console.error('❌ Invalid content type:', contentType);
+      throw new Error('Content-Type must be multipart/form-data');
+    }
+
     const formData = await req.formData();
     console.log('📦 FormData received');
     
