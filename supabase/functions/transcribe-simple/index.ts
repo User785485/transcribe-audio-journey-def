@@ -9,56 +9,53 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('🎯 Nouvelle requête reçue');
+  console.log('📨 Méthode:', req.method);
+  console.log('🔑 Headers:', Object.fromEntries(req.headers.entries()));
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('✅ Requête OPTIONS - Réponse CORS envoyée');
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('🚀 Fonction démarrée');
-    console.log('📨 Headers reçus:', Object.fromEntries(req.headers.entries()));
-    
-    const contentType = req.headers.get('content-type');
-    console.log('📝 Content-Type:', contentType);
+    console.log('🚀 Démarrage du traitement de la requête');
 
+    // Vérification du Content-Type
+    const contentType = req.headers.get('content-type');
+    console.log('📝 Content-Type reçu:', contentType);
+    
     if (!contentType?.includes('multipart/form-data')) {
       console.error('❌ Content-Type invalide:', contentType);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Content-Type must be multipart/form-data' 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      );
+      throw new Error(`Content-Type invalide. Reçu: ${contentType}, Attendu: multipart/form-data`);
     }
 
-    console.log('📦 Lecture du FormData...');
+    console.log('📦 Tentative de lecture du FormData...');
     const formData = await req.formData();
-    console.log('✅ FormData reçu');
-    
+    console.log('✅ FormData lu avec succès');
+
     const audioFile = formData.get('file');
+    console.log('🎵 Détails du fichier audio:', {
+      name: audioFile?.name,
+      type: audioFile?.type,
+      size: audioFile instanceof File ? audioFile.size : 'N/A'
+    });
+
     if (!audioFile || !(audioFile instanceof File)) {
-      console.error('❌ Fichier invalide:', audioFile);
+      console.error('❌ Fichier audio invalide:', audioFile);
       throw new Error('Aucun fichier audio fourni ou format invalide');
     }
 
-    console.log('🎵 Détails du fichier audio:', {
-      name: audioFile.name,
-      type: audioFile.type,
-      size: audioFile.size
-    });
-
     // Préparer le FormData pour Whisper
+    console.log('🔄 Préparation du FormData pour Whisper...');
     const whisperFormData = new FormData();
     whisperFormData.append('file', audioFile);
     whisperFormData.append('model', 'whisper-1');
     whisperFormData.append('language', 'fr');
+    console.log('✅ FormData préparé pour Whisper');
 
-    console.log('🔄 Appel de l\'API Whisper...');
-
+    console.log('🌐 Envoi de la requête à l\'API Whisper...');
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
@@ -67,14 +64,21 @@ serve(async (req) => {
       body: whisperFormData,
     });
 
+    console.log('📊 Statut de la réponse Whisper:', whisperResponse.status);
+    console.log('📝 Headers de la réponse:', Object.fromEntries(whisperResponse.headers.entries()));
+
     if (!whisperResponse.ok) {
-      const error = await whisperResponse.text();
-      console.error('❌ Erreur API Whisper:', error);
-      throw new Error(`Erreur Whisper API: ${error}`);
+      const errorText = await whisperResponse.text();
+      console.error('❌ Erreur API Whisper:', {
+        status: whisperResponse.status,
+        statusText: whisperResponse.statusText,
+        error: errorText
+      });
+      throw new Error(`Erreur Whisper API: ${errorText}`);
     }
 
-    const { text: transcription } = await whisperResponse.json();
-    console.log('✅ Transcription reçue, longueur:', transcription.length);
+    const result = await whisperResponse.json();
+    console.log('✅ Transcription reçue, longueur:', result.text.length);
 
     // Stocker le fichier
     const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
@@ -85,6 +89,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    console.log('💾 Tentative d\'upload du fichier dans le storage...');
     const { error: storageError } = await supabaseAdmin.storage
       .from('audio')
       .upload(filePath, audioFile, {
@@ -96,16 +101,15 @@ serve(async (req) => {
       console.error('❌ Erreur de stockage:', storageError);
       throw storageError;
     }
-
     console.log('✅ Fichier uploadé avec succès');
 
-    // Créer l'entrée dans l'historique
+    console.log('📝 Création de l\'entrée dans l\'historique...');
     const { error: historyError } = await supabaseAdmin
       .from('history')
       .insert({
         filename: audioFile.name,
         file_path: filePath,
-        transcription: transcription,
+        transcription: result.text,
         file_type: 'transcription'
       });
 
@@ -113,9 +117,9 @@ serve(async (req) => {
       console.error('❌ Erreur d\'historique:', historyError);
       throw historyError;
     }
-
     console.log('✅ Entrée d\'historique créée avec succès');
 
+    console.log('🎉 Traitement terminé avec succès');
     return new Response(
       JSON.stringify({
         success: true,
@@ -123,7 +127,7 @@ serve(async (req) => {
           transcription: {
             filename: audioFile.name,
             filePath,
-            transcription
+            transcription: result.text
           }
         }
       }),
@@ -136,7 +140,11 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('❌ Erreur dans la fonction transcribe-simple:', error);
+    console.error('❌ Erreur dans la fonction transcribe-simple:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     
     return new Response(
       JSON.stringify({

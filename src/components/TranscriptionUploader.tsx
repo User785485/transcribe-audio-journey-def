@@ -53,11 +53,19 @@ export function TranscriptionUploader() {
     }]);
 
     try {
+      console.log('🎯 Début du traitement du fichier:', {
+        name: file.name,
+        type: file.type,
+        size: file.size
+      });
+
       const formData = new FormData();
       
-      // Créer un blob avec le bon type MIME
+      console.log('📦 Création du Blob audio...');
       const audioBlob = new Blob([file], { type: file.type });
       formData.append('file', audioBlob, file.name);
+      
+      console.log('✅ FormData créé avec succès');
       
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
@@ -67,22 +75,21 @@ export function TranscriptionUploader() {
         } : p
       ));
 
-      console.log('📤 Envoi du fichier pour transcription:', {
-        filename: file.name,
-        size: file.size,
-        type: file.type
-      });
-
+      console.log('🌐 Appel de la fonction Edge...');
       const { data, error } = await supabase.functions.invoke('transcribe-simple', {
         body: formData,
       });
 
       if (error) {
-        console.error('❌ Erreur de transcription:', error);
+        console.error('❌ Erreur de transcription:', {
+          message: error.message,
+          details: error,
+          file: file.name
+        });
         throw new Error(error.message || 'Une erreur est survenue');
       }
 
-      console.log('✅ Réponse de transcription reçue:', data);
+      console.log('✅ Réponse reçue:', data);
 
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
@@ -98,7 +105,11 @@ export function TranscriptionUploader() {
         description: `Le fichier ${file.name} a été transcrit avec succès.`,
       });
     } catch (error) {
-      console.error('❌ Erreur:', error);
+      console.error('❌ Erreur lors du traitement:', {
+        file: file.name,
+        error: error.message,
+        stack: error.stack
+      });
       
       let errorMessage = 'Une erreur est survenue';
       if (error instanceof Error) {
