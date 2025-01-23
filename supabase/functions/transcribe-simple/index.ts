@@ -11,17 +11,28 @@ const corsHeaders = {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { 
-      headers: corsHeaders,
-      status: 204
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
     console.log('🚀 Fonction démarrée');
+    console.log('📨 Headers reçus:', Object.fromEntries(req.headers.entries()));
     
-    if (req.method !== 'POST') {
-      throw new Error('Method not allowed');
+    const contentType = req.headers.get('content-type');
+    console.log('📝 Content-Type:', contentType);
+
+    if (!contentType?.includes('multipart/form-data')) {
+      console.error('❌ Content-Type invalide:', contentType);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Content-Type must be multipart/form-data' 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400 
+        }
+      );
     }
 
     console.log('📦 Lecture du FormData...');
