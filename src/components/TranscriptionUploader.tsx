@@ -62,8 +62,7 @@ export function TranscriptionUploader() {
       const formData = new FormData();
       
       console.log('📦 Création du Blob audio...');
-      const audioBlob = new Blob([file], { type: file.type });
-      formData.append('file', audioBlob, file.name);
+      formData.append('file', file);
       
       console.log('✅ FormData créé avec succès');
       
