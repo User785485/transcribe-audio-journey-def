@@ -25,13 +25,6 @@ serve(async (req) => {
       throw new Error('Method not allowed');
     }
 
-    // Check if content type is multipart/form-data
-    const contentType = req.headers.get('content-type');
-    if (!contentType || !contentType.includes('multipart/form-data')) {
-      console.error('❌ Invalid content type:', contentType);
-      throw new Error('Content-Type must be multipart/form-data');
-    }
-
     const formData = await req.formData();
     console.log('📦 FormData received');
     
@@ -151,7 +144,6 @@ serve(async (req) => {
   } catch (error) {
     console.error('❌ Error in transcribe-simple function:', error);
     
-    // Ensure we return a proper error response with CORS headers
     return new Response(
       JSON.stringify({
         success: false,
@@ -162,7 +154,7 @@ serve(async (req) => {
           ...corsHeaders,
           'Content-Type': 'application/json'
         },
-        status: 400 // Using 400 instead of 500 for client errors
+        status: 400
       }
     );
   }

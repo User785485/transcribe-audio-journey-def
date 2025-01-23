@@ -71,7 +71,10 @@ export function TranscriptionUploader() {
       });
 
       const { data, error } = await supabase.functions.invoke('transcribe-simple', {
-        body: formData
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
       if (error) {
