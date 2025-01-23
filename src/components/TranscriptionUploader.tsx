@@ -72,15 +72,15 @@ export function TranscriptionUploader() {
         } : p
       ));
 
-      console.log('🌐 Appel direct à l\'Edge Function...');
+      console.log('🌐 Appel à l\'Edge Function avec authentification Supabase...');
       
-      // Utilisation de fetch au lieu de supabase.functions.invoke
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(
         'https://zoknyytimzihihvmhwzs.supabase.co/functions/v1/transcribe-simple',
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${session?.access_token || supabase.auth.getSession()?.data?.session?.access_token}`,
           },
           body: formData
         }
@@ -88,6 +88,11 @@ export function TranscriptionUploader() {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('❌ Erreur réponse:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
         throw new Error(`Erreur HTTP: ${response.status} - ${errorText}`);
       }
 
