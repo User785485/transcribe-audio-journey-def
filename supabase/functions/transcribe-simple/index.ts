@@ -126,9 +126,11 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         data: {
-          filename: audioFile.name,
-          filePath,
-          transcription
+          transcription: {
+            filename: audioFile.name,
+            filePath,
+            transcription
+          }
         }
       }),
       { 
@@ -141,18 +143,19 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Error in transcribe-simple function:', error);
+    
+    // Ensure we return a proper error response with CORS headers
     return new Response(
       JSON.stringify({
-        error: 'Une erreur est survenue lors de la transcription',
-        details: error.message,
-        stack: error.stack
+        success: false,
+        error: error.message || 'Une erreur est survenue lors de la transcription'
       }),
       { 
         headers: { 
           ...corsHeaders,
           'Content-Type': 'application/json'
         },
-        status: 500
+        status: 400 // Using 400 instead of 500 for client errors
       }
     );
   }
