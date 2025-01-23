@@ -53,18 +53,16 @@ export function TranscriptionUploader() {
     }]);
 
     try {
-      console.log('🎯 Début du traitement du fichier:', {
+      console.log('🎯 Début du traitement:', {
         name: file.name,
         type: file.type,
         size: file.size
       });
 
       const formData = new FormData();
-      
-      console.log('📦 Création du Blob audio...');
       formData.append('file', file);
       
-      console.log('✅ FormData créé avec succès');
+      console.log('✅ FormData créé');
       
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
@@ -74,18 +72,21 @@ export function TranscriptionUploader() {
         } : p
       ));
 
-      console.log('🌐 Appel de la fonction Edge...');
+      console.log('🌐 Appel Edge Function...');
       const { data, error } = await supabase.functions.invoke('transcribe-simple', {
         body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
       });
 
       if (error) {
-        console.error('❌ Erreur de transcription:', {
+        console.error('❌ Erreur Edge Function:', {
           message: error.message,
           details: error,
           file: file.name
         });
-        throw new Error(error.message || 'Une erreur est survenue');
+        throw error;
       }
 
       console.log('✅ Réponse reçue:', data);
@@ -104,17 +105,13 @@ export function TranscriptionUploader() {
         description: `Le fichier ${file.name} a été transcrit avec succès.`,
       });
     } catch (error) {
-      console.error('❌ Erreur lors du traitement:', {
+      console.error('❌ Erreur traitement:', {
         file: file.name,
         error: error.message,
         stack: error.stack
       });
       
-      let errorMessage = 'Une erreur est survenue';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-        console.error('Stack trace:', error.stack);
-      }
+      let errorMessage = error.message || 'Une erreur est survenue';
       
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
