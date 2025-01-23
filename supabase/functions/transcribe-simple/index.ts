@@ -13,7 +13,6 @@ serve(async (req) => {
   console.log('📨 Méthode:', req.method);
   console.log('🔑 Headers:', Object.fromEntries(req.headers.entries()));
 
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     console.log('✅ Requête OPTIONS - Réponse CORS envoyée');
     return new Response(null, { headers: corsHeaders });
@@ -22,9 +21,9 @@ serve(async (req) => {
   try {
     console.log('🚀 Démarrage du traitement de la requête');
 
-    // Vérification détaillée du Content-Type
+    // Vérification du Content-Type
     const contentType = req.headers.get('content-type');
-    console.log('📝 Content-Type détecté:', contentType);
+    console.log('📝 Content-Type reçu:', contentType);
     
     if (!contentType || !contentType.includes('multipart/form-data')) {
       console.error('❌ Content-Type invalide:', contentType);
@@ -119,7 +118,7 @@ serve(async (req) => {
     }
     console.log('✅ Historique créé');
 
-    console.log('🎉 Traitement terminé');
+    console.log('🎉 Traitement terminé avec succès');
     return new Response(
       JSON.stringify({
         success: true,

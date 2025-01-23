@@ -33,7 +33,7 @@ export function TranscriptionUploader() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const processFile = async (file) => {
+  const processFile = async (file: File) => {
     const id = crypto.randomUUID();
     
     if (file.size > MAX_TRANSCRIPTION_SIZE) {
@@ -208,12 +208,10 @@ export function TranscriptionUploader() {
     try {
       console.log('Moving transcription to folder:', { selectedItemId, folderId });
       
-      // Get the history item
       const historyItem = historyItems?.find(item => item.id === selectedItemId);
       if (!historyItem) throw new Error('Item not found');
       if (!historyItem.transcription) throw new Error('No transcription found');
 
-      // Get the folder name
       const { data: folderData } = await supabase
         .from('folders')
         .select('name')
@@ -222,11 +220,9 @@ export function TranscriptionUploader() {
 
       if (!folderData) throw new Error('Folder not found');
 
-      // Create a text file in the folder with the transcription
       const transcriptionFileName = `${historyItem.filename.split('.')[0]}_transcription.txt`;
       const transcriptionPath = `${folderId}/${transcriptionFileName}`;
 
-      // Store the transcription text file
       const transcriptionBlob = new Blob([historyItem.transcription], { type: 'text/plain' });
       const { error: storageError } = await supabase.storage
         .from('audio')
@@ -237,7 +233,6 @@ export function TranscriptionUploader() {
 
       if (storageError) throw storageError;
 
-      // Update the history item with the folder name
       const { error: historyError } = await supabase
         .from('history')
         .update({ folder_name: folderData.name })
@@ -249,7 +244,6 @@ export function TranscriptionUploader() {
         description: "Transcription déplacée avec succès",
       });
 
-      // Refresh the data
       refetch();
 
       setIsFolderSelectOpen(false);
