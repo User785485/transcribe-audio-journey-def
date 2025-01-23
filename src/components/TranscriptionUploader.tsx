@@ -70,11 +70,13 @@ export function TranscriptionUploader() {
         type: file.type
       });
 
+      // Créer un blob à partir du fichier pour s'assurer que le type MIME est correct
+      const audioBlob = new Blob([file], { type: file.type });
+      const formDataForFunction = new FormData();
+      formDataForFunction.append('file', audioBlob, file.name);
+
       const { data, error } = await supabase.functions.invoke('transcribe-simple', {
-        body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        body: formDataForFunction,
       });
 
       if (error) {

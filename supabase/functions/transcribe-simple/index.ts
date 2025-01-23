@@ -9,11 +9,8 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('🚀 Function started:', req.method);
-
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    console.log('✅ Handling CORS preflight request');
     return new Response(null, { 
       headers: corsHeaders,
       status: 204
@@ -21,42 +18,61 @@ serve(async (req) => {
   }
 
   try {
+    console.log('🚀 Fonction démarrée');
+    
     if (req.method !== 'POST') {
       throw new Error('Method not allowed');
     }
 
+    console.log('📦 Lecture du FormData...');
     const formData = await req.formData();
-    console.log('📦 FormData received');
+    console.log('✅ FormData reçu');
     
     const audioFile = formData.get('file');
-    const language = 'fr';
-
     if (!audioFile || !(audioFile instanceof File)) {
-      console.error('❌ Invalid file:', audioFile);
+      console.error('❌ Fichier invalide:', audioFile);
       throw new Error('Aucun fichier audio fourni ou format invalide');
     }
 
-    console.log('🎵 Audio file details:', {
+    console.log('🎵 Détails du fichier audio:', {
       name: audioFile.name,
       type: audioFile.type,
       size: audioFile.size
     });
 
-    // Initialize Supabase client
-    console.log('🔄 Initializing Supabase client...');
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    // Préparer le FormData pour Whisper
+    const whisperFormData = new FormData();
+    whisperFormData.append('file', audioFile);
+    whisperFormData.append('model', 'whisper-1');
+    whisperFormData.append('language', 'fr');
 
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('❌ Missing Supabase credentials');
-      throw new Error('Configuration Supabase manquante');
+    console.log('🔄 Appel de l\'API Whisper...');
+
+    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+      },
+      body: whisperFormData,
+    });
+
+    if (!whisperResponse.ok) {
+      const error = await whisperResponse.text();
+      console.error('❌ Erreur API Whisper:', error);
+      throw new Error(`Erreur Whisper API: ${error}`);
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+    const { text: transcription } = await whisperResponse.json();
+    console.log('✅ Transcription reçue, longueur:', transcription.length);
 
-    // Store file
+    // Stocker le fichier
     const filePath = `public/${crypto.randomUUID()}.${audioFile.name.split('.').pop()}`;
-    console.log('📤 Uploading file to:', filePath);
+    console.log('📤 Upload du fichier vers:', filePath);
+
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
     const { error: storageError } = await supabaseAdmin.storage
       .from('audio')
@@ -66,46 +82,13 @@ serve(async (req) => {
       });
 
     if (storageError) {
-      console.error('❌ Storage upload failed:', storageError);
-      throw new Error(`Erreur lors du stockage: ${storageError.message}`);
+      console.error('❌ Erreur de stockage:', storageError);
+      throw storageError;
     }
 
-    console.log('✅ File uploaded successfully');
+    console.log('✅ Fichier uploadé avec succès');
 
-    // Prepare Whisper API request
-    console.log('🎙️ Preparing Whisper API request...');
-    const whisperFormData = new FormData();
-    whisperFormData.append('file', audioFile);
-    whisperFormData.append('model', 'whisper-1');
-    whisperFormData.append('language', language);
-
-    const openaiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiKey) {
-      console.error('❌ Missing OpenAI API key');
-      throw new Error('Clé API OpenAI manquante');
-    }
-
-    // Call Whisper API
-    console.log('🔄 Calling Whisper API...');
-    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiKey}`,
-      },
-      body: whisperFormData,
-    });
-
-    if (!whisperResponse.ok) {
-      const errorText = await whisperResponse.text();
-      console.error('❌ Whisper API error:', errorText);
-      throw new Error(`Erreur de transcription: ${errorText}`);
-    }
-
-    const { text: transcription } = await whisperResponse.json();
-    console.log('✅ Transcription received, length:', transcription.length);
-
-    // Store in history table
-    console.log('💾 Storing in history...');
+    // Créer l'entrée dans l'historique
     const { error: historyError } = await supabaseAdmin
       .from('history')
       .insert({
@@ -116,11 +99,11 @@ serve(async (req) => {
       });
 
     if (historyError) {
-      console.error('❌ Failed to store in history:', historyError);
-      throw new Error('Erreur lors de l\'enregistrement des métadonnées');
+      console.error('❌ Erreur d\'historique:', historyError);
+      throw historyError;
     }
 
-    console.log('✅ History entry created successfully');
+    console.log('✅ Entrée d\'historique créée avec succès');
 
     return new Response(
       JSON.stringify({
@@ -142,7 +125,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('❌ Error in transcribe-simple function:', error);
+    console.error('❌ Erreur dans la fonction transcribe-simple:', error);
     
     return new Response(
       JSON.stringify({
