@@ -72,23 +72,26 @@ export function TranscriptionUploader() {
         } : p
       ));
 
-      console.log('🌐 Appel Edge Function...');
-      const { data, error } = await supabase.functions.invoke('transcribe-simple', {
-        body: formData,
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
+      console.log('🌐 Appel direct à l\'Edge Function...');
+      
+      // Utilisation de fetch au lieu de supabase.functions.invoke
+      const response = await fetch(
+        'https://zoknyytimzihihvmhwzs.supabase.co/functions/v1/transcribe-simple',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: formData
+        }
+      );
 
-      if (error) {
-        console.error('❌ Erreur Edge Function:', {
-          message: error.message,
-          details: error,
-          file: file.name
-        });
-        throw error;
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erreur HTTP: ${response.status} - ${errorText}`);
       }
 
+      const data = await response.json();
       console.log('✅ Réponse reçue:', data);
 
       setTranscriptionProgress(prev => prev.map(p => 
