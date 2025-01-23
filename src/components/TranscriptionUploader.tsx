@@ -74,13 +74,17 @@ export function TranscriptionUploader() {
 
       console.log('🌐 Appel à l\'Edge Function avec authentification Supabase...');
       
-      const { data: { session } } = await supabase.auth.getSession();
+      const sessionResult = await supabase.auth.getSession();
+      const accessToken = sessionResult.data.session?.access_token;
+      
+      console.log('🔑 Token d\'accès récupéré:', accessToken ? 'Présent' : 'Absent');
+
       const response = await fetch(
         'https://zoknyytimzihihvmhwzs.supabase.co/functions/v1/transcribe-simple',
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session?.access_token || supabase.auth.getSession()?.data?.session?.access_token}`,
+            'Authorization': `Bearer ${accessToken}`,
           },
           body: formData
         }
