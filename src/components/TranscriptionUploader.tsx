@@ -1,517 +1,73 @@
-import { useState, useCallback, useEffect } from "react";
-import { DropZone } from "./DropZone";
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Progress } from "@/components/ui/progress";
+import { DropZone } from "./DropZone";
+import { TranscriptionHistory } from "./TranscriptionHistory";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileAudio, Copy, Download, FolderInput } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
-import { fr } from "date-fns/locale";
-import { useNavigate } from "react-router-dom";
-import { FolderSelect } from "./FolderSelect";
-
-export const SUPPORTED_FORMATS = {
-  'audio/flac': ['.flac'],
-  'audio/m4a': ['.m4a'],
-  'audio/mpeg': ['.mp3', '.mpeg', '.mpga'],
-  'audio/ogg': ['.oga', '.ogg'],
-  'audio/wav': ['.wav'],
-  'audio/webm': ['.webm'],
-  'video/mp4': ['.mp4'],
-  'audio/opus': ['.opus']
-};
-
-export const MAX_TRANSCRIPTION_SIZE = 25 * 1024 * 1024; // 25MB
 
 export function TranscriptionUploader() {
-  const [transcriptionProgress, setTranscriptionProgress] = useState([]);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
-  const navigate = useNavigate();
 
-  // Check authentication status on component mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error('❌ Erreur lors de la vérification de l\'authentification:', error);
-        toast({
-          variant: "destructive",
-          title: "Erreur d'authentification",
-          description: "Veuillez vous connecter pour utiliser cette fonctionnalité.",
-        });
-        navigate('/auth');
-        return;
-      }
-
-      if (!session) {
-        console.log('⚠️ Utilisateur non authentifié, redirection vers la page de connexion');
-        toast({
-          title: "Authentification requise",
-          description: "Veuillez vous connecter pour utiliser cette fonctionnalité.",
-        });
-        navigate('/auth');
-      }
-    };
-
-    checkAuth();
-  }, [navigate, toast]);
-
-  const processFile = async (file: File) => {
-    const id = crypto.randomUUID();
-    
-    console.log('🚀 Démarrage du processus de transcription', {
-      id,
-      filename: file.name,
-      size: file.size,
-      type: file.type
-    });
-
-    if (file.size > MAX_TRANSCRIPTION_SIZE) {
-      console.log('⚠️ Fichier trop volumineux, redirection vers le splitter');
-      toast({
-        title: "Fichier trop volumineux",
-        description: "Redirection vers l'outil de découpage...",
-      });
-      navigate("/split");
-      return;
-    }
-
-    setTranscriptionProgress(prev => [...prev, {
-      id,
-      filename: file.name,
-      progress: 0,
-      status: 'pending'
-    }]);
+  const handleUpload = async (files: File[]) => {
+    setIsUploading(true);
+    console.log("📁 Fichiers reçus pour transcription:", files);
 
     try {
-      console.log('📦 Création du FormData...');
-      const formData = new FormData();
-      formData.append('file', file);
-      console.log('✅ FormData créé avec succès');
+      for (const file of files) {
+        console.log("🎵 Traitement du fichier:", file.name);
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("audio")
+          .upload(`uploads/${file.name}`, file);
 
-      console.log('🔐 Récupération de la session Supabase...');
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('❌ Erreur lors de la récupération de la session:', sessionError);
-        throw new Error(`Erreur de session: ${sessionError.message}`);
-      }
-
-      if (!sessionData.session) {
-        console.log('⚠️ Session non trouvée, redirection vers la page de connexion');
-        toast({
-          title: "Session expirée",
-          description: "Votre session a expiré. Veuillez vous reconnecter.",
-        });
-        navigate('/auth');
-        return;
-      }
-
-      console.log('👤 Détails de la session:', {
-        hasSession: !!sessionData.session,
-        user: sessionData.session?.user?.email,
-        expiresAt: sessionData.session?.expires_at
-      });
-
-      const accessToken = sessionData.session.access_token;
-      console.log('🔑 Token d\'accès:', accessToken ? 'Présent' : 'Absent');
-
-      if (!accessToken) {
-        console.error('❌ Pas de token d\'accès trouvé');
-        toast({
-          variant: "destructive",
-          title: "Erreur d'authentification",
-          description: "Token d'accès manquant. Veuillez vous reconnecter.",
-        });
-        navigate('/auth');
-        return;
-      }
-
-      setTranscriptionProgress(prev => prev.map(p => 
-        p.id === id ? {
-          ...p,
-          status: 'transcribing',
-          progress: 50
-        } : p
-      ));
-
-      console.log('🌐 Préparation de la requête à l\'Edge Function...');
-      const headers = {
-        'Authorization': `Bearer ${accessToken}`,
-      };
-      console.log('📨 Headers de la requête:', headers);
-
-      const response = await fetch(
-        `${process.env.VITE_SUPABASE_URL}/functions/v1/transcribe-simple`,
-        {
-          method: 'POST',
-          headers,
-          body: formData
+        if (uploadError) {
+          console.error("❌ Erreur lors de l'upload:", uploadError);
+          throw new Error(`Erreur lors de l'upload de ${file.name}: ${uploadError.message}`);
         }
-      );
 
-      console.log('📥 Réponse reçue:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
+        console.log("✅ Upload réussi:", uploadData);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Erreur de la réponse:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
-          headers: Object.fromEntries(response.headers.entries())
-        });
-        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
-      }
+        const { data: transcriptionData, error: transcriptionError } = await supabase.functions
+          .invoke("transcribe-simple", {
+            body: { filePath: uploadData.path },
+          });
 
-      const data = await response.json();
-      console.log('✅ Données reçues:', {
-        success: data.success,
-        hasTranscription: !!data.data?.transcription
-      });
+        if (transcriptionError) {
+          console.error("❌ Erreur lors de la transcription:", transcriptionError);
+          throw new Error(`Erreur lors de la transcription de ${file.name}: ${transcriptionError.message}`);
+        }
 
-      setTranscriptionProgress(prev => prev.map(p => 
-        p.id === id ? {
-          ...p,
-          status: 'completed',
-          progress: 100,
-          transcription: data.data.transcription.transcription
-        } : p
-      ));
-      
-      toast({
-        title: "Transcription terminée",
-        description: `Le fichier ${file.name} a été transcrit avec succès.`,
-      });
-    } catch (error) {
-      console.error('❌ Erreur détaillée:', {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-        file: file.name
-      });
-      
-      let errorMessage = error.message || 'Une erreur est survenue';
-      
-      if (errorMessage.includes('Non authentifié') || errorMessage.includes('Token manquant')) {
+        console.log("✅ Transcription réussie:", transcriptionData);
+
         toast({
-          variant: "destructive",
-          title: "Erreur d'authentification",
-          description: "Veuillez vous reconnecter pour continuer.",
+          title: "Transcription terminée",
+          description: `Le fichier ${file.name} a été transcrit avec succès.`,
         });
-        navigate('/auth');
-        return;
       }
-      
-      setTranscriptionProgress(prev => prev.map(p => 
-        p.id === id ? {
-          ...p,
-          status: 'error',
-          progress: 100,
-          error: errorMessage
-        } : p
-      ));
-      
+    } catch (error: any) {
+      console.error("❌ Erreur générale:", error);
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: `Erreur lors de la transcription de ${file.name}: ${errorMessage}`,
+        description: error.message,
       });
-    }
-  };
-
-  const handleDrop = useCallback((acceptedFiles) => {
-    acceptedFiles.forEach(processFile);
-  }, []);
-
-  const handleCopyTranscription = (transcription) => {
-    navigator.clipboard.writeText(transcription);
-    toast({
-      description: "Transcription copiée dans le presse-papier",
-    });
-  };
-
-  const { data: folders } = useQuery({
-    queryKey: ['folders'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('folders')
-        .select('*')
-        .is('parent_id', null)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: historyItems, isLoading: isHistoryLoading, refetch } = useQuery({
-    queryKey: ['transcription-history'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('history')
-        .select('*')
-        .eq('file_type', 'transcription')
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const handleCopy = (text) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      description: "Texte copié dans le presse-papier",
-    });
-  };
-
-  const handleDownload = async (filePath, filename) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('audio')
-        .download(filePath);
-
-      if (error) throw error;
-
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de télécharger le fichier audio",
-      });
-    }
-  };
-
-  const handleMoveToFolder = async (folderId: string) => {
-    if (!selectedItemId) return;
-
-    try {
-      console.log('Moving transcription to folder:', { selectedItemId, folderId });
-      
-      const historyItem = historyItems?.find(item => item.id === selectedItemId);
-      if (!historyItem) throw new Error('Item not found');
-      if (!historyItem.transcription) throw new Error('No transcription found');
-
-      const { data: folderData } = await supabase
-        .from('folders')
-        .select('name')
-        .eq('id', folderId)
-        .single();
-
-      if (!folderData) throw new Error('Folder not found');
-
-      const transcriptionFileName = `${historyItem.filename.split('.')[0]}_transcription.txt`;
-      const transcriptionPath = `${folderId}/${transcriptionFileName}`;
-
-      const transcriptionBlob = new Blob([historyItem.transcription], { type: 'text/plain' });
-      const { error: storageError } = await supabase.storage
-        .from('audio')
-        .upload(transcriptionPath, transcriptionBlob, {
-          contentType: 'text/plain',
-          upsert: true
-        });
-
-      if (storageError) throw storageError;
-
-      const { error: historyError } = await supabase
-        .from('history')
-        .update({ folder_name: folderData.name })
-        .eq('id', selectedItemId);
-
-      if (historyError) throw historyError;
-
-      toast({
-        description: "Transcription déplacée avec succès",
-      });
-
-      refetch();
-
-      setIsFolderSelectOpen(false);
-      setSelectedItemId(null);
-    } catch (error) {
-      console.error('Error moving transcription to folder:', error);
-      toast({
-        variant: "destructive",
-        description: "Erreur lors du déplacement de la transcription",
-      });
+    } finally {
+      setIsUploading(false);
     }
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-8">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-bold">Nouvelle transcription</h2>
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Nouvelle transcription</h2>
         <p className="text-muted-foreground">
-          Déposez vos fichiers audio ici (25MB maximum). Pour les fichiers plus volumineux, utilisez l'outil de découpage.
+          Déposez vos fichiers audio pour les transcrire automatiquement
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {Array.from({ length: 9 }).map((_, index) => (
-          <DropZone
-            key={index}
-            onDrop={handleDrop}
-            supportedFormats={SUPPORTED_FORMATS}
-            index={index}
-          />
-        ))}
-      </div>
-
-      {transcriptionProgress.map((item) => (
-        <div key={item.id} className="space-y-4 border rounded-lg p-4">
-          <div className="flex justify-between items-center">
-            <h3 className="font-medium">{item.filename}</h3>
-            <span className="text-sm text-muted-foreground">
-              {item.status === 'pending' && 'En attente...'}
-              {item.status === 'transcribing' && 'Transcription en cours...'}
-              {item.status === 'completed' && 'Terminé'}
-              {item.status === 'error' && 'Erreur'}
-            </span>
-          </div>
-          
-          <Progress value={item.progress} className="w-full" />
-          
-          {item.status === 'transcribing' && (
-            <div className="flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <p>Transcription en cours...</p>
-            </div>
-          )}
-
-          {item.status === 'completed' && item.transcription && (
-            <div className="rounded-lg bg-card p-4">
-              <p className="whitespace-pre-wrap mb-4">{item.transcription}</p>
-              <Button
-                onClick={() => handleCopyTranscription(item.transcription)}
-                size="sm"
-              >
-                Copier le texte
-              </Button>
-            </div>
-          )}
-
-          {item.status === 'error' && (
-            <div className="text-destructive space-y-2">
-              <p className="font-medium">Erreur :</p>
-              <p className="text-sm">{item.error}</p>
-            </div>
-          )}
-        </div>
-      ))}
-
-      <Card className="mt-8">
-        <CardHeader>
-          <CardTitle>Dernières transcriptions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fichier</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Transcription</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isHistoryLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8">
-                      <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                    </TableCell>
-                  </TableRow>
-                ) : !historyItems?.length ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      Aucune transcription trouvée
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  historyItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="flex items-center gap-2">
-                        <FileAudio className="w-4 h-4" />
-                        {item.filename}
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(item.created_at), 'PPP', { locale: fr })}
-                      </TableCell>
-                      <TableCell className="max-w-md truncate">
-                        {item.transcription}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          {item.transcription && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => handleCopy(item.transcription!)}
-                              title="Copier la transcription"
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => handleDownload(item.file_path, item.filename)}
-                            title="Télécharger l'audio"
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          {item.transcription && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => {
-                                setSelectedItemId(item.id);
-                                setIsFolderSelectOpen(true);
-                              }}
-                              title="Déplacer la transcription vers un dossier"
-                            >
-                              <FolderInput className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <FolderSelect
-        folders={folders || []}
-        isOpen={isFolderSelectOpen}
-        onClose={() => {
-          setIsFolderSelectOpen(false);
-          setSelectedItemId(null);
-        }}
-        onSelect={handleMoveToFolder}
-      />
+      <DropZone onUpload={handleUpload} isUploading={isUploading} />
+      
+      <TranscriptionHistory />
     </div>
   );
 }
