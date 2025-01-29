@@ -9,35 +9,58 @@ export function TranscriptionUploader() {
   const { toast } = useToast();
 
   const handleUpload = async (files: File[]) => {
+    console.log("🎯 Starting upload process with files:", files.map(f => ({ name: f.name, size: f.size, type: f.type })));
     setIsUploading(true);
-    console.log("📁 Fichiers reçus pour transcription:", files);
 
     try {
       for (const file of files) {
-        console.log("🎵 Traitement du fichier:", file.name);
+        console.log("📁 Processing file:", file.name);
         
+        // Upload file to Supabase Storage
+        console.log("⬆️ Uploading file to storage...");
+        const uploadPath = `uploads/${Date.now()}_${file.name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("audio")
-          .upload(`uploads/${file.name}`, file);
+          .upload(uploadPath, file);
 
         if (uploadError) {
-          console.error("❌ Erreur lors de l'upload:", uploadError);
+          console.error("❌ Storage upload error:", uploadError);
           throw new Error(`Erreur lors de l'upload de ${file.name}: ${uploadError.message}`);
         }
 
-        console.log("✅ Upload réussi:", uploadData);
+        console.log("✅ File uploaded successfully:", uploadData);
 
+        // Call transcription function
+        console.log("🎙️ Starting transcription process...");
         const { data: transcriptionData, error: transcriptionError } = await supabase.functions
           .invoke("transcribe-simple", {
-            body: { filePath: uploadData.path },
+            body: { filePath: uploadPath },
           });
 
         if (transcriptionError) {
-          console.error("❌ Erreur lors de la transcription:", transcriptionError);
+          console.error("❌ Transcription error:", transcriptionError);
           throw new Error(`Erreur lors de la transcription de ${file.name}: ${transcriptionError.message}`);
         }
 
-        console.log("✅ Transcription réussie:", transcriptionData);
+        console.log("✅ Transcription completed:", transcriptionData);
+
+        // Save to history
+        console.log("💾 Saving to history...");
+        const { error: historyError } = await supabase
+          .from("history")
+          .insert({
+            filename: file.name,
+            file_path: uploadPath,
+            transcription: transcriptionData.transcription,
+            file_type: "transcription"
+          });
+
+        if (historyError) {
+          console.error("❌ History save error:", historyError);
+          throw new Error(`Erreur lors de la sauvegarde de l'historique: ${historyError.message}`);
+        }
+
+        console.log("✅ History saved successfully");
 
         toast({
           title: "Transcription terminée",
@@ -45,13 +68,14 @@ export function TranscriptionUploader() {
         });
       }
     } catch (error: any) {
-      console.error("❌ Erreur générale:", error);
+      console.error("❌ Global error:", error);
       toast({
         variant: "destructive",
         title: "Erreur",
         description: error.message,
       });
     } finally {
+      console.log("🏁 Upload process completed");
       setIsUploading(false);
     }
   };

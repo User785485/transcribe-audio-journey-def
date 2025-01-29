@@ -13,13 +13,15 @@ export const SUPPORTED_FORMATS = {
 
 export function DropZone({ onDrop, isUploading }: DropZoneProps) {
   const handleDrop = useCallback((acceptedFiles: File[]) => {
+    console.log("📁 Files dropped:", acceptedFiles.map(f => ({ name: f.name, type: f.type, size: f.size })));
     onDrop(acceptedFiles);
   }, [onDrop]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: handleDrop,
     accept: SUPPORTED_FORMATS,
-    disabled: isUploading
+    disabled: isUploading,
+    maxSize: 25 * 1024 * 1024, // 25MB max
   });
 
   const formatsList = Object.values(SUPPORTED_FORMATS).flat().join(', ');
