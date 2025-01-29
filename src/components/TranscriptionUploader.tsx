@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { DropZone } from "./DropZone";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
@@ -32,6 +32,35 @@ export function TranscriptionUploader() {
   const [isFolderSelectOpen, setIsFolderSelectOpen] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Check authentication status on component mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('❌ Erreur lors de la vérification de l\'authentification:', error);
+        toast({
+          variant: "destructive",
+          title: "Erreur d'authentification",
+          description: "Veuillez vous connecter pour utiliser cette fonctionnalité.",
+        });
+        navigate('/auth');
+        return;
+      }
+
+      if (!session) {
+        console.log('⚠️ Utilisateur non authentifié, redirection vers la page de connexion');
+        toast({
+          title: "Authentification requise",
+          description: "Veuillez vous connecter pour utiliser cette fonctionnalité.",
+        });
+        navigate('/auth');
+      }
+    };
+
+    checkAuth();
+  }, [navigate, toast]);
 
   const processFile = async (file: File) => {
     const id = crypto.randomUUID();
@@ -74,18 +103,34 @@ export function TranscriptionUploader() {
         throw new Error(`Erreur de session: ${sessionError.message}`);
       }
 
+      if (!sessionData.session) {
+        console.log('⚠️ Session non trouvée, redirection vers la page de connexion');
+        toast({
+          title: "Session expirée",
+          description: "Votre session a expiré. Veuillez vous reconnecter.",
+        });
+        navigate('/auth');
+        return;
+      }
+
       console.log('👤 Détails de la session:', {
         hasSession: !!sessionData.session,
         user: sessionData.session?.user?.email,
         expiresAt: sessionData.session?.expires_at
       });
 
-      const accessToken = sessionData?.session?.access_token;
+      const accessToken = sessionData.session.access_token;
       console.log('🔑 Token d\'accès:', accessToken ? 'Présent' : 'Absent');
 
       if (!accessToken) {
         console.error('❌ Pas de token d\'accès trouvé');
-        throw new Error('Non authentifié - Token manquant');
+        toast({
+          variant: "destructive",
+          title: "Erreur d'authentification",
+          description: "Token d'accès manquant. Veuillez vous reconnecter.",
+        });
+        navigate('/auth');
+        return;
       }
 
       setTranscriptionProgress(prev => prev.map(p => 
@@ -156,6 +201,16 @@ export function TranscriptionUploader() {
       });
       
       let errorMessage = error.message || 'Une erreur est survenue';
+      
+      if (errorMessage.includes('Non authentifié') || errorMessage.includes('Token manquant')) {
+        toast({
+          variant: "destructive",
+          title: "Erreur d'authentification",
+          description: "Veuillez vous reconnecter pour continuer.",
+        });
+        navigate('/auth');
+        return;
+      }
       
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
