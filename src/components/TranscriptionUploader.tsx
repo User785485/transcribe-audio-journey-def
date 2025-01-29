@@ -84,7 +84,7 @@ export function TranscriptionUploader() {
       }
 
       const response = await fetch(
-        `${supabase.supabaseUrl}/functions/v1/transcribe-simple`,
+        `${process.env.VITE_SUPABASE_URL}/functions/v1/transcribe-simple`,
         {
           method: 'POST',
           headers: {
