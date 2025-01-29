@@ -83,11 +83,8 @@ export function TranscriptionUploader() {
         throw new Error('Non authentifié');
       }
 
-      // Get the base URL from the Supabase client configuration
-      const supabaseUrl = supabase.getSubscriptions().supabaseUrl;
-
       const response = await fetch(
-        `${supabaseUrl}/functions/v1/transcribe-simple`,
+        `${supabase.supabaseUrl}/functions/v1/transcribe-simple`,
         {
           method: 'POST',
           headers: {
