@@ -36,7 +36,15 @@ export function TranscriptionUploader() {
   const processFile = async (file: File) => {
     const id = crypto.randomUUID();
     
+    console.log('🚀 Démarrage du processus de transcription', {
+      id,
+      filename: file.name,
+      size: file.size,
+      type: file.type
+    });
+
     if (file.size > MAX_TRANSCRIPTION_SIZE) {
+      console.log('⚠️ Fichier trop volumineux, redirection vers le splitter');
       toast({
         title: "Fichier trop volumineux",
         description: "Redirection vers l'outil de découpage...",
@@ -53,17 +61,33 @@ export function TranscriptionUploader() {
     }]);
 
     try {
-      console.log('🎯 Début du traitement:', {
-        name: file.name,
-        type: file.type,
-        size: file.size
-      });
-
+      console.log('📦 Création du FormData...');
       const formData = new FormData();
       formData.append('file', file);
+      console.log('✅ FormData créé avec succès');
+
+      console.log('🔐 Récupération de la session Supabase...');
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       
-      console.log('✅ FormData créé');
-      
+      if (sessionError) {
+        console.error('❌ Erreur lors de la récupération de la session:', sessionError);
+        throw new Error(`Erreur de session: ${sessionError.message}`);
+      }
+
+      console.log('👤 Détails de la session:', {
+        hasSession: !!sessionData.session,
+        user: sessionData.session?.user?.email,
+        expiresAt: sessionData.session?.expires_at
+      });
+
+      const accessToken = sessionData?.session?.access_token;
+      console.log('🔑 Token d\'accès:', accessToken ? 'Présent' : 'Absent');
+
+      if (!accessToken) {
+        console.error('❌ Pas de token d\'accès trouvé');
+        throw new Error('Non authentifié - Token manquant');
+      }
+
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
           ...p,
@@ -72,40 +96,43 @@ export function TranscriptionUploader() {
         } : p
       ));
 
-      console.log('🌐 Appel à l\'Edge Function avec authentification Supabase...');
-      
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData?.session?.access_token;
-      
-      console.log('🔑 Token d\'accès récupéré:', accessToken ? 'Présent' : 'Absent');
-
-      if (!accessToken) {
-        throw new Error('Non authentifié');
-      }
+      console.log('🌐 Préparation de la requête à l\'Edge Function...');
+      const headers = {
+        'Authorization': `Bearer ${accessToken}`,
+      };
+      console.log('📨 Headers de la requête:', headers);
 
       const response = await fetch(
         `${process.env.VITE_SUPABASE_URL}/functions/v1/transcribe-simple`,
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-          },
+          headers,
           body: formData
         }
       );
 
+      console.log('📥 Réponse reçue:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Erreur réponse:', {
+        console.error('❌ Erreur de la réponse:', {
           status: response.status,
           statusText: response.statusText,
-          error: errorText
+          error: errorText,
+          headers: Object.fromEntries(response.headers.entries())
         });
-        throw new Error(`Erreur HTTP: ${response.status} - ${errorText}`);
+        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
       }
 
       const data = await response.json();
-      console.log('✅ Réponse reçue:', data);
+      console.log('✅ Données reçues:', {
+        success: data.success,
+        hasTranscription: !!data.data?.transcription
+      });
 
       setTranscriptionProgress(prev => prev.map(p => 
         p.id === id ? {
@@ -121,10 +148,11 @@ export function TranscriptionUploader() {
         description: `Le fichier ${file.name} a été transcrit avec succès.`,
       });
     } catch (error) {
-      console.error('❌ Erreur traitement:', {
-        file: file.name,
-        error: error.message,
-        stack: error.stack
+      console.error('❌ Erreur détaillée:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        file: file.name
       });
       
       let errorMessage = error.message || 'Une erreur est survenue';
@@ -318,7 +346,7 @@ export function TranscriptionUploader() {
             <div className="rounded-lg bg-card p-4">
               <p className="whitespace-pre-wrap mb-4">{item.transcription}</p>
               <Button
-                onClick={() => handleCopyTranscription(item.transcription!)}
+                onClick={() => handleCopyTranscription(item.transcription)}
                 size="sm"
               >
                 Copier le texte
