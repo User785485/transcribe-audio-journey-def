@@ -2,16 +2,18 @@ import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload } from "lucide-react";
 
-interface DropZoneProps {
+export interface DropZoneProps {
   onDrop: (files: File[]) => void;
   isUploading?: boolean;
+  supportedFormats?: Record<string, string[]>;
+  index?: number;
 }
 
 export const SUPPORTED_FORMATS = {
   'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg']
 };
 
-export function DropZone({ onDrop, isUploading }: DropZoneProps) {
+export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FORMATS }: DropZoneProps) {
   const handleDrop = useCallback((acceptedFiles: File[]) => {
     console.log("📁 Files dropped:", acceptedFiles.map(f => ({ name: f.name, type: f.type, size: f.size })));
     onDrop(acceptedFiles);
@@ -19,12 +21,12 @@ export function DropZone({ onDrop, isUploading }: DropZoneProps) {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: handleDrop,
-    accept: SUPPORTED_FORMATS,
+    accept: supportedFormats,
     disabled: isUploading,
     maxSize: 25 * 1024 * 1024, // 25MB max
   });
 
-  const formatsList = Object.values(SUPPORTED_FORMATS).flat().join(', ');
+  const formatsList = Object.values(supportedFormats).flat().join(', ');
 
   return (
     <div

@@ -198,7 +198,6 @@ export function AudioSplitter() {
         <DropZone
           onDrop={handleDrop}
           supportedFormats={SUPPORTED_FORMATS}
-          index={0}
         />
       </div>
 
