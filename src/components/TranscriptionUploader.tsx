@@ -74,8 +74,8 @@ export function TranscriptionUploader() {
 
       console.log('🌐 Appel à l\'Edge Function avec authentification Supabase...');
       
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
       
       console.log('🔑 Token d\'accès récupéré:', accessToken ? 'Présent' : 'Absent');
 
@@ -83,8 +83,11 @@ export function TranscriptionUploader() {
         throw new Error('Non authentifié');
       }
 
+      // Get the base URL from the Supabase client configuration
+      const supabaseUrl = supabase.getSubscriptions().supabaseUrl;
+
       const response = await fetch(
-        `${supabase.supabaseUrl}/functions/v1/transcribe-simple`,
+        `${supabaseUrl}/functions/v1/transcribe-simple`,
         {
           method: 'POST',
           headers: {
