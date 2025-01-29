@@ -65,7 +65,7 @@ export function TranscriptionUploader() {
         </p>
       </div>
 
-      <DropZone onUpload={handleUpload} isUploading={isUploading} />
+      <DropZone onDrop={handleUpload} isUploading={isUploading} />
       
       <TranscriptionHistory />
     </div>

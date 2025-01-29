@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useQueryClient } from '@tanstack/react-query';
 import { useDropzone } from 'react-dropzone';
-import { SUPPORTED_FORMATS } from '../../components/TranscriptionUploader';
+import { SUPPORTED_FORMATS } from '../../components/DropZone';
 import { FolderSelect } from '../FolderSelect';
 import { useQuery } from '@tanstack/react-query';
 
