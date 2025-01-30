@@ -17,7 +17,7 @@ export interface ChunkProgress {
   }[];
   status: 'splitting' | 'completed' | 'error';
   error?: string;
-  progress?: number;
+  progress: number;
 }
 
 export interface TranscriptionProgress {

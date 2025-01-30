@@ -35,8 +35,15 @@ export function AudioSplitter() {
   const audioChunker = new AudioChunker();
 
   const processFile = async (file: File) => {
-    console.log('Starting to process file:', file.name, 'Size:', file.size, 'Type:', file.type);
+    console.log('🎯 Starting to process file:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: new Date(file.lastModified).toISOString()
+    });
+
     const id = crypto.randomUUID();
+    console.log('📝 Generated process ID:', id);
     
     setSplitProgress(prev => [...prev, {
       id,
@@ -48,23 +55,26 @@ export function AudioSplitter() {
 
     try {
       // Analyze file
-      console.log('Analyzing file metadata...');
+      console.log('🔍 Analyzing file metadata...');
       const metadata = await audioAnalyzer.analyzeFile(file);
-      console.log('File metadata:', metadata);
+      console.log('📊 File metadata:', metadata);
 
       // Split into chunks
-      console.log('Starting file splitting...');
+      console.log('✂️ Starting file splitting...');
       const rawChunks = await audioChunker.splitFile(file, (progress) => {
-        console.log(`Splitting progress: ${progress}%`);
+        console.log(`📈 Splitting progress: ${progress.toFixed(2)}%`);
         setSplitProgress(prev => prev.map(p => 
           p.id === id ? {
             ...p,
-            progress
+            progress: Math.round(progress)
           } : p
         ));
       });
       
-      console.log('File split into', rawChunks.length, 'chunks');
+      console.log('✅ File split completed:', {
+        totalChunks: rawChunks.length,
+        totalSize: rawChunks.reduce((acc, chunk) => acc + chunk.size, 0)
+      });
       
       const chunks = rawChunks.map((blob, index) => ({
         number: index + 1,
@@ -82,12 +92,17 @@ export function AudioSplitter() {
       ));
 
       // Save first chunk to history
-      console.log('Saving first chunk to history...');
+      console.log('💾 Saving first chunk to history...');
       const fileExtension = file.name.split('.').pop() || '';
       const chunkFileName = `${file.name.replace(`.${fileExtension}`, '')}_partie1de${chunks.length}.${fileExtension}`;
       const chunkPath = `splits/${chunkFileName}`;
       
-      console.log('Uploading chunk to storage:', chunkPath);
+      console.log('⬆️ Uploading chunk to storage:', {
+        path: chunkPath,
+        size: chunks[0].blob.size,
+        type: chunks[0].blob.type
+      });
+
       const { error: uploadError } = await supabase.storage
         .from('audio')
         .upload(chunkPath, chunks[0].blob, {
@@ -96,11 +111,11 @@ export function AudioSplitter() {
         });
 
       if (uploadError) {
-        console.error('Error uploading chunk:', uploadError);
+        console.error('❌ Error uploading chunk:', uploadError);
         throw uploadError;
       }
 
-      console.log('Creating history entry...');
+      console.log('📝 Creating history entry...');
       const { error: historyError } = await supabase
         .from('history')
         .insert({
@@ -110,16 +125,17 @@ export function AudioSplitter() {
         });
 
       if (historyError) {
-        console.error('Error creating history entry:', historyError);
+        console.error('❌ Error creating history entry:', historyError);
         throw historyError;
       }
 
+      console.log('✅ Process completed successfully');
       toast({
         title: "Découpage terminé",
         description: `Le fichier ${file.name} a été découpé en ${chunks.length} parties.`,
       });
     } catch (error) {
-      console.error('Error processing file:', error);
+      console.error('❌ Error processing file:', error);
       setSplitProgress(prev => prev.map(p => 
         p.id === id ? {
           ...p,
@@ -137,7 +153,7 @@ export function AudioSplitter() {
   };
 
   const handleDrop = useCallback((files: File[]) => {
-    console.log('Files dropped:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
+    console.log('📁 Files dropped:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
     files.forEach(file => {
       if (file.size > MAX_TRANSCRIPTION_SIZE) {
         processFile(file);
@@ -154,7 +170,7 @@ export function AudioSplitter() {
   const { data: splitHistory, isLoading: isHistoryLoading } = useQuery({
     queryKey: ['split-history'],
     queryFn: async () => {
-      console.log('Fetching split history...');
+      console.log('📚 Fetching split history...');
       const { data, error } = await supabase
         .from('history')
         .select('*')
@@ -163,24 +179,24 @@ export function AudioSplitter() {
         .limit(5);
 
       if (error) {
-        console.error('Error fetching split history:', error);
+        console.error('❌ Error fetching split history:', error);
         throw error;
       }
       
-      console.log('Split history fetched:', data);
+      console.log('📊 Split history fetched:', data);
       return data;
     },
   });
 
   const handleDownload = async (filePath: string, filename: string) => {
     try {
-      console.log('Downloading file:', { filePath, filename });
+      console.log('⬇️ Downloading file:', { filePath, filename });
       const { data, error } = await supabase.storage
         .from('audio')
         .download(filePath);
 
       if (error) {
-        console.error('Error downloading file:', error);
+        console.error('❌ Error downloading file:', error);
         throw error;
       }
 
@@ -193,9 +209,9 @@ export function AudioSplitter() {
       URL.revokeObjectURL(url);
       document.body.removeChild(a);
       
-      console.log('File downloaded successfully');
+      console.log('✅ File downloaded successfully');
     } catch (error) {
-      console.error('Download error:', error);
+      console.error('❌ Download error:', error);
       toast({
         variant: "destructive",
         title: "Erreur",
