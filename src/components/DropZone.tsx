@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload } from "lucide-react";
+import { toast } from "sonner";
 
 export interface DropZoneProps {
   onDrop: (files: File[]) => void;
@@ -15,32 +16,30 @@ export const SUPPORTED_FORMATS = {
 
 export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FORMATS }: DropZoneProps) {
   const handleDrop = useCallback((acceptedFiles: File[]) => {
-    console.log("📁 Files received in DropZone:", acceptedFiles.map(f => ({ 
-      name: f.name, 
-      type: f.type, 
-      size: f.size,
-      lastModified: new Date(f.lastModified).toISOString()
-    })));
+    console.log("📁 Files received in DropZone:", acceptedFiles);
 
-    if (acceptedFiles.length === 0) {
+    if (acceptedFiles?.length === 0) {
       console.log("⚠️ No files were accepted by the dropzone");
+      toast.error("Aucun fichier n'a été accepté. Vérifiez le format de vos fichiers.");
       return;
     }
 
-    // Validate file types
     const validFiles = acceptedFiles.filter(file => {
       const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`;
       const isValidType = Object.values(supportedFormats).flat().includes(fileExtension);
       
       if (!isValidType) {
         console.log(`❌ File ${file.name} has an unsupported format`);
+        toast.error(`Le fichier ${file.name} n'est pas dans un format supporté`);
       }
       
       return isValidType;
     });
 
-    console.log("✅ Valid files to process:", validFiles.map(f => f.name));
-    onDrop(validFiles);
+    if (validFiles.length > 0) {
+      console.log("✅ Valid files to process:", validFiles);
+      onDrop(validFiles);
+    }
   }, [onDrop, supportedFormats]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -51,9 +50,21 @@ export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FOR
     multiple: true,
     noClick: false,
     noKeyboard: false,
+    onDropRejected: (rejectedFiles) => {
+      console.log("❌ Files rejected:", rejectedFiles);
+      rejectedFiles.forEach(rejection => {
+        if (rejection.errors[0]?.code === "file-too-large") {
+          toast.error(`Le fichier ${rejection.file.name} est trop volumineux (max 25MB)`);
+        } else {
+          toast.error(`Le fichier ${rejection.file.name} n'a pas pu être accepté`);
+        }
+      });
+    },
+    onError: (error) => {
+      console.error("❌ Dropzone error:", error);
+      toast.error("Une erreur s'est produite lors du dépôt des fichiers");
+    }
   });
-
-  const formatsList = Object.values(supportedFormats).flat().join(', ');
 
   return (
     <div
@@ -73,7 +84,7 @@ export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FOR
               Glissez-déposez des fichiers audio ou vidéo, ou cliquez pour sélectionner
             </p>
             <p className="text-xs text-muted-foreground">
-              Formats supportés : {formatsList}
+              Formats supportés : {Object.values(supportedFormats).flat().join(', ')}
             </p>
           </div>
         )}
