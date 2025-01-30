@@ -33,10 +33,16 @@ serve(async (req) => {
     console.log('🔄 Initializing Supabase client');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const openaiKey = Deno.env.get('OPENAI_API_KEY');
 
     if (!supabaseUrl || !supabaseKey) {
       console.error('❌ Missing Supabase credentials');
       throw new Error('Configuration Supabase manquante');
+    }
+
+    if (!openaiKey) {
+      console.error('❌ Missing OpenAI API key');
+      throw new Error('Clé API OpenAI manquante');
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
@@ -53,13 +59,6 @@ serve(async (req) => {
     }
 
     console.log('✅ File downloaded successfully');
-
-    // Check OpenAI API key
-    const openaiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiKey) {
-      console.error('❌ Missing OpenAI API key');
-      throw new Error('Clé API OpenAI manquante');
-    }
 
     // Prepare file for Whisper API
     console.log('🔄 Preparing file for Whisper API');
