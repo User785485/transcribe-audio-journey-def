@@ -33,7 +33,7 @@ export function ChunkDisplay({ item, onDownloadChunk }: ChunkDisplayProps) {
               <Loader2 className="w-4 h-4 animate-spin" />
               <p className="text-sm text-muted-foreground">Découpage du fichier en cours...</p>
             </div>
-            <Progress value={33} className="h-2" />
+            <Progress value={item.progress} className="h-2" />
           </div>
         )}
 

@@ -35,14 +35,15 @@ export function AudioSplitter() {
   const audioChunker = new AudioChunker();
 
   const processFile = async (file: File) => {
-    console.log('Starting to process file:', file.name, 'Size:', file.size);
+    console.log('Starting to process file:', file.name, 'Size:', file.size, 'Type:', file.type);
     const id = crypto.randomUUID();
     
     setSplitProgress(prev => [...prev, {
       id,
       originalName: file.name,
       chunks: [],
-      status: 'splitting'
+      status: 'splitting',
+      progress: 0
     }]);
 
     try {
@@ -53,7 +54,16 @@ export function AudioSplitter() {
 
       // Split into chunks
       console.log('Starting file splitting...');
-      const rawChunks = await audioChunker.splitFile(file);
+      const rawChunks = await audioChunker.splitFile(file, (progress) => {
+        console.log(`Splitting progress: ${progress}%`);
+        setSplitProgress(prev => prev.map(p => 
+          p.id === id ? {
+            ...p,
+            progress
+          } : p
+        ));
+      });
+      
       console.log('File split into', rawChunks.length, 'chunks');
       
       const chunks = rawChunks.map((blob, index) => ({
@@ -66,7 +76,8 @@ export function AudioSplitter() {
         p.id === id ? {
           ...p,
           chunks,
-          status: 'completed'
+          status: 'completed',
+          progress: 100
         } : p
       ));
 
