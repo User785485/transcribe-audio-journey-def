@@ -11,6 +11,7 @@ const corsHeaders = {
 serve(async (req) => {
   console.log('🎯 Received transcription request');
   
+  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
     console.log('✅ Handling CORS preflight request');
     return new Response(null, { 
@@ -30,10 +31,15 @@ serve(async (req) => {
 
     // Initialize Supabase client
     console.log('🔄 Initializing Supabase client');
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase credentials');
+      throw new Error('Configuration Supabase manquante');
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
     // Download file from storage
     console.log('⬇️ Downloading file from storage');
@@ -47,6 +53,13 @@ serve(async (req) => {
     }
 
     console.log('✅ File downloaded successfully');
+
+    // Check OpenAI API key
+    const openaiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiKey) {
+      console.error('❌ Missing OpenAI API key');
+      throw new Error('Clé API OpenAI manquante');
+    }
 
     // Prepare file for Whisper API
     console.log('🔄 Preparing file for Whisper API');
@@ -92,7 +105,7 @@ serve(async (req) => {
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Authorization': `Bearer ${openaiKey}`,
       },
       body: formData,
     });
