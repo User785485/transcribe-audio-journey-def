@@ -35,6 +35,7 @@ export function AudioSplitter() {
   const audioChunker = new AudioChunker();
 
   const processFile = async (file: File) => {
+    console.log('Starting to process file:', file.name, 'Size:', file.size);
     const id = crypto.randomUUID();
     
     setSplitProgress(prev => [...prev, {
@@ -46,11 +47,14 @@ export function AudioSplitter() {
 
     try {
       // Analyze file
+      console.log('Analyzing file metadata...');
       const metadata = await audioAnalyzer.analyzeFile(file);
       console.log('File metadata:', metadata);
 
       // Split into chunks
+      console.log('Starting file splitting...');
       const rawChunks = await audioChunker.splitFile(file);
+      console.log('File split into', rawChunks.length, 'chunks');
       
       const chunks = rawChunks.map((blob, index) => ({
         number: index + 1,
@@ -66,11 +70,13 @@ export function AudioSplitter() {
         } : p
       ));
 
-      // Save to history
+      // Save first chunk to history
+      console.log('Saving first chunk to history...');
       const fileExtension = file.name.split('.').pop() || '';
       const chunkFileName = `${file.name.replace(`.${fileExtension}`, '')}_partie1de${chunks.length}.${fileExtension}`;
       const chunkPath = `splits/${chunkFileName}`;
       
+      console.log('Uploading chunk to storage:', chunkPath);
       const { error: uploadError } = await supabase.storage
         .from('audio')
         .upload(chunkPath, chunks[0].blob, {
@@ -83,6 +89,7 @@ export function AudioSplitter() {
         throw uploadError;
       }
 
+      console.log('Creating history entry...');
       const { error: historyError } = await supabase
         .from('history')
         .insert({
@@ -119,6 +126,7 @@ export function AudioSplitter() {
   };
 
   const handleDrop = useCallback((files: File[]) => {
+    console.log('Files dropped:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
     files.forEach(file => {
       if (file.size > MAX_TRANSCRIPTION_SIZE) {
         processFile(file);
