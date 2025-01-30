@@ -2,6 +2,11 @@ import { MAX_CHUNK_SIZE } from './types';
 
 export class AudioChunker {
   async splitFile(file: File, onProgress?: (progress: number) => void): Promise<Blob[]> {
+    if (!file) {
+      console.error('❌ No file provided to splitFile');
+      throw new Error('Aucun fichier fourni');
+    }
+
     console.log('🎯 Starting file splitting process:', {
       name: file.name,
       size: file.size,
@@ -12,6 +17,11 @@ export class AudioChunker {
     const chunks: Blob[] = [];
     const chunkSize = MAX_CHUNK_SIZE;
     const totalChunks = Math.ceil(file.size / chunkSize);
+
+    if (totalChunks === 0) {
+      console.error('❌ File is empty');
+      throw new Error('Le fichier est vide');
+    }
 
     console.log('📊 Splitting configuration:', {
       chunkSize,
@@ -27,6 +37,12 @@ export class AudioChunker {
         console.log(`✂️ Creating chunk ${i + 1}/${totalChunks}:`, { start, end });
         
         const chunk = file.slice(start, end, file.type);
+        
+        if (chunk.size === 0) {
+          console.error(`❌ Chunk ${i + 1} is empty`);
+          continue;
+        }
+
         chunks.push(chunk);
 
         console.log(`✅ Chunk ${i + 1} created:`, {
@@ -41,6 +57,10 @@ export class AudioChunker {
         }
       }
 
+      if (chunks.length === 0) {
+        throw new Error('Aucun chunk n\'a été créé');
+      }
+
       console.log('🎉 File splitting completed:', {
         totalChunks: chunks.length,
         totalSize: chunks.reduce((acc, chunk) => acc + chunk.size, 0)
@@ -49,7 +69,7 @@ export class AudioChunker {
       return chunks;
     } catch (error) {
       console.error('❌ Error during file splitting:', error);
-      throw new Error(`Erreur lors du découpage du fichier: ${error.message}`);
+      throw new Error(`Erreur lors du découpage du fichier: ${error instanceof Error ? error.message : 'Une erreur est survenue'}`);
     }
   }
 }

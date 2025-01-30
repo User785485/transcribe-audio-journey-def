@@ -15,15 +15,42 @@ export const SUPPORTED_FORMATS = {
 
 export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FORMATS }: DropZoneProps) {
   const handleDrop = useCallback((acceptedFiles: File[]) => {
-    console.log("📁 Files dropped:", acceptedFiles.map(f => ({ name: f.name, type: f.type, size: f.size })));
-    onDrop(acceptedFiles);
-  }, [onDrop]);
+    console.log("📁 Files received in DropZone:", acceptedFiles.map(f => ({ 
+      name: f.name, 
+      type: f.type, 
+      size: f.size,
+      lastModified: new Date(f.lastModified).toISOString()
+    })));
+
+    if (acceptedFiles.length === 0) {
+      console.log("⚠️ No files were accepted by the dropzone");
+      return;
+    }
+
+    // Validate file types
+    const validFiles = acceptedFiles.filter(file => {
+      const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`;
+      const isValidType = Object.values(supportedFormats).flat().includes(fileExtension);
+      
+      if (!isValidType) {
+        console.log(`❌ File ${file.name} has an unsupported format`);
+      }
+      
+      return isValidType;
+    });
+
+    console.log("✅ Valid files to process:", validFiles.map(f => f.name));
+    onDrop(validFiles);
+  }, [onDrop, supportedFormats]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: handleDrop,
     accept: supportedFormats,
     disabled: isUploading,
     maxSize: 25 * 1024 * 1024, // 25MB max
+    multiple: true,
+    noClick: false,
+    noKeyboard: false,
   });
 
   const formatsList = Object.values(supportedFormats).flat().join(', ');
@@ -31,8 +58,8 @@ export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FOR
   return (
     <div
       {...getRootProps()}
-      className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
-        isDragActive ? 'border-primary bg-primary/10' : 'border-muted-foreground/25'
+      className={`border-2 border-dashed rounded-lg p-6 transition-colors cursor-pointer ${
+        isDragActive ? 'border-primary bg-primary/10' : 'border-muted-foreground/25 hover:border-primary/50'
       } ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <input {...getInputProps()} />
@@ -42,7 +69,9 @@ export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FOR
           <p className="text-base">Déposez les fichiers ici...</p>
         ) : (
           <div className="space-y-1 text-center">
-            <p className="text-base">Glissez-déposez des fichiers audio ou vidéo</p>
+            <p className="text-base">
+              Glissez-déposez des fichiers audio ou vidéo, ou cliquez pour sélectionner
+            </p>
             <p className="text-xs text-muted-foreground">
               Formats supportés : {formatsList}
             </p>
