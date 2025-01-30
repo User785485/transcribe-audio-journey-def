@@ -11,7 +11,7 @@ const corsHeaders = {
 serve(async (req) => {
   console.log('🎯 Received transcription request');
   
-  // Handle CORS preflight request
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     console.log('✅ Handling CORS preflight request');
     return new Response(null, { 
