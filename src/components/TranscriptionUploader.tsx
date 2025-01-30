@@ -129,6 +129,7 @@ export function TranscriptionUploader() {
         onDrop={handleUpload} 
         isUploading={isUploading}
         supportedFormats={SUPPORTED_FORMATS}
+        maxSize={25 * 1024 * 1024} // 25MB limit for OpenAI
       />
       
       {isUploading && (

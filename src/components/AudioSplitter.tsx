@@ -233,6 +233,7 @@ export function AudioSplitter() {
         <DropZone
           onDrop={handleDrop}
           supportedFormats={SUPPORTED_FORMATS}
+          maxSize={500 * 1024 * 1024} // 500MB limit for splitting
         />
       </div>
 

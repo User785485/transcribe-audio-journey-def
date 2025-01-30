@@ -7,6 +7,7 @@ export interface DropZoneProps {
   onDrop: (files: File[]) => void;
   isUploading?: boolean;
   supportedFormats?: Record<string, string[]>;
+  maxSize?: number;
 }
 
 export const SUPPORTED_FORMATS = {
@@ -14,7 +15,12 @@ export const SUPPORTED_FORMATS = {
   'video/*': ['.mp4', '.webm']
 };
 
-export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FORMATS }: DropZoneProps) {
+export function DropZone({ 
+  onDrop, 
+  isUploading, 
+  supportedFormats = SUPPORTED_FORMATS,
+  maxSize = 100 * 1024 * 1024 // Default to 100MB if not specified
+}: DropZoneProps) {
   const handleDrop = useCallback((acceptedFiles: File[]) => {
     console.log("📁 Files received in DropZone:", acceptedFiles);
 
@@ -46,7 +52,7 @@ export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FOR
     onDrop: handleDrop,
     accept: supportedFormats,
     disabled: isUploading,
-    maxSize: 25 * 1024 * 1024, // 25MB max
+    maxSize: maxSize,
     multiple: true,
     noClick: false,
     noKeyboard: false,
@@ -54,7 +60,8 @@ export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FOR
       console.log("❌ Files rejected:", rejectedFiles);
       rejectedFiles.forEach(rejection => {
         if (rejection.errors[0]?.code === "file-too-large") {
-          toast.error(`Le fichier ${rejection.file.name} est trop volumineux (max 25MB)`);
+          const sizeMB = Math.round(maxSize / 1024 / 1024);
+          toast.error(`Le fichier ${rejection.file.name} est trop volumineux (max ${sizeMB}MB)`);
         } else {
           toast.error(`Le fichier ${rejection.file.name} n'a pas pu être accepté`);
         }
