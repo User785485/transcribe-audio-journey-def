@@ -6,11 +6,11 @@ export interface DropZoneProps {
   onDrop: (files: File[]) => void;
   isUploading?: boolean;
   supportedFormats?: Record<string, string[]>;
-  index?: number;
 }
 
 export const SUPPORTED_FORMATS = {
-  'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg']
+  'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg'],
+  'video/*': ['.mp4', '.webm']
 };
 
 export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FORMATS }: DropZoneProps) {
@@ -42,9 +42,9 @@ export function DropZone({ onDrop, isUploading, supportedFormats = SUPPORTED_FOR
           <p className="text-base">Déposez les fichiers ici...</p>
         ) : (
           <div className="space-y-1 text-center">
-            <p className="text-base">Glissez-déposez des fichiers audio</p>
+            <p className="text-base">Glissez-déposez des fichiers audio ou vidéo</p>
             <p className="text-xs text-muted-foreground">
-              Formats : {formatsList}
+              Formats supportés : {formatsList}
             </p>
           </div>
         )}
