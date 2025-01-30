@@ -55,7 +55,7 @@ export function AudioSplitter() {
 
     try {
       // Analyze file
-      console.log('🔍 Analyzing file metadata...');
+      console.log('🔍 Starting file analysis...');
       const metadata = await audioAnalyzer.analyzeFile(file);
       console.log('📊 File metadata:', metadata);
 
