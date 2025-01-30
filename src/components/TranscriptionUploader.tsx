@@ -69,6 +69,11 @@ export function TranscriptionUploader() {
           throw new Error(`Erreur lors de la transcription de ${file.name}: ${transcriptionError.message}`);
         }
 
+        if (!transcriptionData?.transcription) {
+          console.error("❌ No transcription data received");
+          throw new Error(`Erreur: Aucune transcription reçue pour ${file.name}`);
+        }
+
         console.log("✅ Transcription completed:", transcriptionData);
         setUploadProgress(100);
 

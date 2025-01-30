@@ -51,7 +51,40 @@ serve(async (req) => {
     // Prepare file for Whisper API
     console.log('🔄 Preparing file for Whisper API');
     const formData = new FormData();
-    formData.append('file', fileData);
+    
+    // Ensure the file has the correct MIME type
+    const fileExtension = filePath.split('.').pop()?.toLowerCase();
+    let mimeType;
+    switch (fileExtension) {
+      case 'mp3':
+        mimeType = 'audio/mpeg';
+        break;
+      case 'wav':
+        mimeType = 'audio/wav';
+        break;
+      case 'mp4':
+        mimeType = 'video/mp4';
+        break;
+      case 'm4a':
+        mimeType = 'audio/mp4';
+        break;
+      case 'ogg':
+      case 'oga':
+        mimeType = 'audio/ogg';
+        break;
+      case 'webm':
+        mimeType = 'audio/webm';
+        break;
+      case 'flac':
+        mimeType = 'audio/flac';
+        break;
+      default:
+        mimeType = 'audio/mpeg';
+    }
+
+    // Create a new file with the correct MIME type
+    const file = new File([fileData], `audio.${fileExtension}`, { type: mimeType });
+    formData.append('file', file);
     formData.append('model', 'whisper-1');
     formData.append('language', 'fr');
 
