@@ -37,12 +37,24 @@ serve(async (req) => {
 
     if (!supabaseUrl || !supabaseKey) {
       console.error('❌ Missing Supabase credentials');
-      throw new Error('Configuration Supabase manquante');
+      return new Response(
+        JSON.stringify({ error: 'Configuration Supabase manquante' }),
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     if (!openaiKey) {
       console.error('❌ Missing OpenAI API key');
-      throw new Error('Clé API OpenAI manquante');
+      return new Response(
+        JSON.stringify({ error: 'Clé API OpenAI manquante' }),
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
@@ -55,7 +67,13 @@ serve(async (req) => {
 
     if (downloadError) {
       console.error('❌ File download error:', downloadError);
-      throw new Error(`Erreur lors du téléchargement: ${downloadError.message}`);
+      return new Response(
+        JSON.stringify({ error: `Erreur lors du téléchargement: ${downloadError.message}` }),
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     console.log('✅ File downloaded successfully');
@@ -112,7 +130,13 @@ serve(async (req) => {
     if (!whisperResponse.ok) {
       const error = await whisperResponse.text();
       console.error('❌ Whisper API error:', error);
-      throw new Error(`Erreur Whisper API: ${error}`);
+      return new Response(
+        JSON.stringify({ error: `Erreur Whisper API: ${error}` }),
+        { 
+          status: whisperResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     const result = await whisperResponse.json();
@@ -143,7 +167,7 @@ serve(async (req) => {
           ...corsHeaders,
           'Content-Type': 'application/json'
         },
-        status: 400
+        status: 500
       }
     );
   }
