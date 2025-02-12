@@ -11,7 +11,6 @@ const corsHeaders = {
 serve(async (req) => {
   console.log('🎯 Received transcription request');
   
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     console.log('✅ Handling CORS preflight request');
     return new Response(null, { 
@@ -26,11 +25,15 @@ serve(async (req) => {
 
     if (!filePath) {
       console.error('❌ No file path provided');
-      throw new Error('Aucun chemin de fichier fourni');
+      return new Response(
+        JSON.stringify({ error: 'Aucun chemin de fichier fourni' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
     }
 
-    // Initialize Supabase client
-    console.log('🔄 Initializing Supabase client');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiKey = Deno.env.get('OPENAI_API_KEY');
@@ -59,7 +62,6 @@ serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-    // Download file from storage
     console.log('⬇️ Downloading file from storage');
     const { data: fileData, error: downloadError } = await supabaseAdmin.storage
       .from('audio')
@@ -78,11 +80,9 @@ serve(async (req) => {
 
     console.log('✅ File downloaded successfully');
 
-    // Prepare file for Whisper API
     console.log('🔄 Preparing file for Whisper API');
     const formData = new FormData();
     
-    // Ensure the file has the correct MIME type
     const fileExtension = filePath.split('.').pop()?.toLowerCase();
     let mimeType;
     switch (fileExtension) {
@@ -112,7 +112,6 @@ serve(async (req) => {
         mimeType = 'audio/mpeg';
     }
 
-    // Create a new file with the correct MIME type
     const file = new File([fileData], `audio.${fileExtension}`, { type: mimeType });
     formData.append('file', file);
     formData.append('model', 'whisper-1');
@@ -130,6 +129,26 @@ serve(async (req) => {
     if (!whisperResponse.ok) {
       const error = await whisperResponse.text();
       console.error('❌ Whisper API error:', error);
+      
+      // Parse the error to check if it's a quota error
+      try {
+        const parsedError = JSON.parse(error);
+        if (parsedError.error?.code === 'insufficient_quota') {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Quota OpenAI dépassé. Veuillez vérifier votre abonnement OpenAI ou contacter le support.',
+              details: parsedError.error.message
+            }),
+            { 
+              status: 429,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
+          );
+        }
+      } catch (e) {
+        // If error parsing fails, return generic error
+      }
+      
       return new Response(
         JSON.stringify({ error: `Erreur Whisper API: ${error}` }),
         { 
