@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { DropZone } from "./DropZone";
@@ -42,9 +43,12 @@ export function TranscriptionUploader() {
           });
         }, 500);
         
+        // Sanitize filename - remove non-ASCII characters and spaces
+        const sanitizedFilename = file.name.replace(/[^\x00-\x7F]/g, '').replace(/\s+/g, '_');
+        
         // Upload file to Supabase Storage
         console.log("⬆️ Uploading file to storage...");
-        const uploadPath = `uploads/${Date.now()}_${file.name}`;
+        const uploadPath = `uploads/${Date.now()}_${sanitizedFilename}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("audio")
           .upload(uploadPath, file);
