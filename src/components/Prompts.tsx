@@ -32,13 +32,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
-interface SavedPrompt {
-  id: string;
-  title: string;
-  content: string;
-  order: number;
-}
-
 export function Prompts() {
   const [isOpen, setIsOpen] = useState(false);
   const [title, setTitle] = useState("");

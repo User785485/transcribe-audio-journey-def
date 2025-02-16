@@ -149,10 +149,11 @@ export function FolderTree({
             {folder.transcriptions?.length > 0 && (
               <div className="mt-4">
                 <FolderContents
-                  transcriptions={folder.transcriptions}
-                  onMoveToFolder={onMoveToFolder}
-                  searchTerm={searchTerm}
-                  folderId={folder.id}
+                  files={folder.transcriptions
+                    .filter((f) => 
+                      f.audio_files.filename.toLowerCase().includes(searchTerm.toLowerCase())
+                    )}
+                  onDelete={() => {}}
                 />
               </div>
             )}
