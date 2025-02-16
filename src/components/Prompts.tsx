@@ -32,7 +32,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
-interface Prompt {
+interface SavedPrompt {
   id: string;
   title: string;
   content: string;

@@ -22,12 +22,11 @@ type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
 
 interface FolderContentsProps {
   transcriptions: Transcription[];
-  onMoveToFolder: (transcriptionId: string) => void;
   searchTerm: string;
   folderId: string | null;
 }
 
-export function FolderContents({ transcriptions, onMoveToFolder, searchTerm, folderId }: FolderContentsProps) {
+export function FolderContents({ transcriptions, searchTerm, folderId }: FolderContentsProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("to_convert");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
