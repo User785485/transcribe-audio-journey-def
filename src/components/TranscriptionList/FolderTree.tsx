@@ -1,166 +1,169 @@
-import { useState } from 'react';
-import { Database } from '@/integrations/supabase/types';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Folder, ChevronRight, ChevronDown, Pencil, Trash } from 'lucide-react';
+import { useState } from "react";
+import { Folder as FolderIcon, ChevronRight, ChevronDown, MoreVertical, Pencil } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { FolderContents } from "./FolderContents";
+import { Folder } from "@/types/folder";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { FolderContents } from './FolderContents';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-type Transcription = Database['public']['Tables']['transcriptions']['Row'] & {
-  audio_files: Database['public']['Tables']['audio_files']['Row'] | null;
-};
-
-type Folder = Database['public']['Tables']['folders']['Row'] & {
-  transcriptions: Transcription[];
-  subfolders: Folder[];
-};
-
-interface FolderTreeProps {
+interface Props {
   folder: Folder;
-  searchTerm: string;
-  onMoveToFolder: (transcriptionId: string) => void;
-  onRenameFolder: (id: string, name: string) => void;
-  onDeleteFolder: (id: string) => void;
+  level?: number;
   openFolders: Set<string>;
   onToggleFolder: (folderId: string) => void;
+  onRename: (folderId: string, newName: string) => void;
+  onDelete: (folderId: string) => void;
+  onDeleteFile: (fileId: string) => void;
 }
 
-export function FolderTree({ 
-  folder, 
-  searchTerm, 
-  onMoveToFolder, 
-  onRenameFolder,
-  onDeleteFolder,
+export function FolderTree({
+  folder,
+  level = 0,
   openFolders,
-  onToggleFolder
-}: FolderTreeProps) {
+  onToggleFolder,
+  onRename,
+  onDelete,
+  onDeleteFile
+}: Props) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(folder.name);
   const isOpen = openFolders.has(folder.id);
 
-  const handleDelete = () => {
-    onDeleteFolder(folder.id);
+  const handleRename = () => {
+    if (newName.trim() && newName !== folder.name) {
+      onRename(folder.id, newName);
+    }
+    setIsRenaming(false);
   };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-card">
-        <Collapsible open={isOpen} onOpenChange={() => onToggleFolder(folder.id)}>
-          <CollapsibleTrigger className="flex items-center gap-2 p-4 hover:bg-accent rounded-t-lg cursor-pointer w-full">
-            <div className="flex items-center gap-2 flex-1">
+    <div style={{ paddingLeft: `${level * 16}px` }}>
+      <Collapsible
+        open={isOpen}
+        onOpenChange={() => onToggleFolder(folder.id)}
+      >
+        <div className="flex items-center py-1">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6">
               {isOpen ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                <ChevronDown className="h-4 w-4" />
               ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                <ChevronRight className="h-4 w-4" />
               )}
-              <Folder className="w-4 h-4 text-primary" />
-              {isRenaming ? (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (newName.trim()) {
-                      onRenameFolder(folder.id, newName);
-                      setIsRenaming(false);
-                    }
-                  }}
-                  className="flex-1"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    autoFocus
-                    onBlur={() => {
-                      if (newName.trim()) {
-                        onRenameFolder(folder.id, newName);
-                        setIsRenaming(false);
-                      }
-                    }}
-                    className="max-w-sm"
-                  />
-                </form>
-              ) : (
-                <span className="text-left flex-1 font-medium">{folder.name}</span>
-              )}
-            </div>
-            <div className="flex gap-2">
+            </Button>
+          </CollapsibleTrigger>
+
+          <FolderIcon className="h-4 w-4 text-muted-foreground mx-2" />
+          
+          {isRenaming ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="h-8"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRename();
+                  if (e.key === "Escape") setIsRenaming(false);
+                }}
+                autoFocus
+              />
               <Button
                 variant="ghost"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsRenaming(true);
-                  setNewName(folder.name);
-                }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                size="sm"
+                onClick={handleRename}
               >
-                <Pencil className="w-4 h-4" />
+                Save
               </Button>
-              {folder.name.toLowerCase() !== 'malo' && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => e.stopPropagation()}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Trash className="w-4 h-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Êtes-vous sûr ?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Cette action ne peut pas être annulée. Le dossier et son contenu seront définitivement supprimés.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Annuler</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDelete}>
-                        Supprimer
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsRenaming(false)}
+              >
+                Cancel
+              </Button>
             </div>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="p-4 pt-0">
-            {folder.subfolders?.length > 0 && (
-              <div className="space-y-4 mt-4">
-                {folder.subfolders.map((subfolder) => (
-                  <FolderTree
-                    key={subfolder.id}
-                    folder={subfolder}
-                    searchTerm={searchTerm}
-                    onMoveToFolder={onMoveToFolder}
-                    onRenameFolder={onRenameFolder}
-                    onDeleteFolder={onDeleteFolder}
-                    openFolders={openFolders}
-                    onToggleFolder={onToggleFolder}
-                  />
-                ))}
+          ) : (
+            <>
+              <span className="text-sm font-medium">{folder.name}</span>
+              <div className="ml-auto flex items-center">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setIsRenaming(true)}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Rename
+                    </DropdownMenuItem>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <DropdownMenuItem
+                          className="text-red-600"
+                          onSelect={(e) => e.preventDefault()}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Folder</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete this folder and all its contents?
+                            This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => onDelete(folder.id)}
+                            className="bg-red-600"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-            )}
-            
-            {folder.transcriptions?.length > 0 && (
-              <div className="mt-4">
-                <FolderContents
-                  files={folder.transcriptions
-                    .filter((f) => 
-                      f.audio_files.filename.toLowerCase().includes(searchTerm.toLowerCase())
-                    )}
-                  onDelete={() => {}}
+            </>
+          )}
+        </div>
+
+        <CollapsibleContent>
+          {folder.subfolders?.length > 0 && (
+            <>
+              {folder.subfolders.map((subfolder) => (
+                <FolderTree
+                  key={subfolder.id}
+                  folder={subfolder}
+                  level={level + 1}
+                  openFolders={openFolders}
+                  onToggleFolder={onToggleFolder}
+                  onRename={onRename}
+                  onDelete={onDelete}
+                  onDeleteFile={onDeleteFile}
                 />
-              </div>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
-      <Separator className="my-6" />
+              ))}
+              <Separator className="my-2" />
+            </>
+          )}
+          
+          {folder.transcriptions?.length > 0 && (
+            <div className="mt-2">
+              <FolderContents
+                files={folder.transcriptions}
+                onDelete={onDeleteFile}
+              />
+            </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
