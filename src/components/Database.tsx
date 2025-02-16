@@ -16,6 +16,23 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+interface Transcription {
+  id: string;
+  created_at: string;
+  filename: string;
+  status: string;
+  transcription_text: string;
+}
+
+interface AudioFile {
+  id: string;
+  filename: string;
+  file_path: string;
+  file_type: string;
+  folder_id: string;
+  created_at: string;
+}
+
 const SUPPORTED_AUDIO_FORMATS = {
   'audio/*': [
     '.mp3',
@@ -343,7 +360,7 @@ export const Database = () => {
         <div className="space-y-2">
           <h3 className="font-medium">Fichiers dans ce dossier :</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {selectedFolderFiles.map((file) => (
+            {selectedFolderFiles.map((file: AudioFile) => (
               <div key={file.id} className="p-4 border rounded-lg">
                 <p className="truncate">{file.filename}</p>
                 <p className="text-sm text-muted-foreground">

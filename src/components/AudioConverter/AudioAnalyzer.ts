@@ -1,6 +1,3 @@
-import { AudioMetadata } from './types';
-import { SUPPORTED_FORMATS } from '../AudioSplitter';
-
 export interface AudioMetadata {
   duration: number;
   sampleRate: number;
@@ -8,19 +5,16 @@ export interface AudioMetadata {
   format: string;
 }
 
-export const SUPPORTED_FORMATS = [".mp3", ".wav", ".m4a", ".ogg"];
+export const SUPPORTED_FORMATS = [".mp3", ".wav", ".m4a", ".ogg"] as const;
 
 export class AudioAnalyzer {
   private context: AudioContext;
   private analyser: AnalyserNode;
-  private dataArray: Uint8Array;
 
   constructor() {
     this.context = new AudioContext();
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 2048;
-    const bufferLength = this.analyser.frequencyBinCount;
-    this.dataArray = new Uint8Array(bufferLength);
   }
 
   async analyzeFile(file: File): Promise<AudioMetadata> {
