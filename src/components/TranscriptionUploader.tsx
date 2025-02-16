@@ -46,18 +46,11 @@ export function TranscriptionUploader() {
         setIsUploading(false);
         setUploadProgress(0);
         setFiles([]);
-        toast({
-          title: "Upload Complete",
-          description: `Successfully uploaded ${file.name}`,
-        });
+        toast.success("Successfully uploaded " + file.name);
       }, 5000);
 
     } catch (error) {
-      toast({
-        title: "Upload Failed",
-        description: error instanceof Error ? error.message : "An error occurred",
-        variant: "destructive",
-      });
+      toast.error(error instanceof Error ? error.message : "An error occurred");
       setIsUploading(false);
       setUploadProgress(0);
     }
