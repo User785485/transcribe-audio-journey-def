@@ -1,34 +1,43 @@
 import { AudioMetadata } from './types';
 import { SUPPORTED_FORMATS } from '../AudioSplitter';
 
+export interface AudioMetadata {
+  duration: number;
+  sampleRate: number;
+  channels: number;
+  format: string;
+}
+
+export const SUPPORTED_FORMATS = [".mp3", ".wav", ".m4a", ".ogg"];
+
 export class AudioAnalyzer {
-  private audioContext: AudioContext;
+  private context: AudioContext;
   private analyser: AnalyserNode;
   private dataArray: Uint8Array;
-  private bufferLength: number;
 
   constructor() {
-    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    this.analyser = this.audioContext.createAnalyser();
+    this.context = new AudioContext();
+    this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 2048;
-    this.bufferLength = this.analyser.frequencyBinCount;
-    this.dataArray = new Uint8Array(this.bufferLength);
+    const bufferLength = this.analyser.frequencyBinCount;
+    this.dataArray = new Uint8Array(bufferLength);
   }
 
-  async analyzeFile(file: File): Promise<{ duration: number; sampleRate: number }> {
+  async analyzeFile(file: File): Promise<AudioMetadata> {
     const arrayBuffer = await file.arrayBuffer();
-    const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-    
+    const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
+
     return {
       duration: audioBuffer.duration,
       sampleRate: audioBuffer.sampleRate,
+      channels: audioBuffer.numberOfChannels,
+      format: file.type,
     };
   }
 
-  // Méthode pour nettoyer les ressources
   dispose() {
-    if (this.audioContext.state !== 'closed') {
-      this.audioContext.close();
+    if (this.context.state !== "closed") {
+      this.context.close();
     }
   }
 }

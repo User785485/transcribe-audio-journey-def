@@ -10,6 +10,10 @@ interface FileWithProgress extends File {
   progress?: number;
 }
 
+interface TranscriptionUploaderProps {
+  onUploadComplete?: (result: any) => void;
+}
+
 const ALLOWED_MIME_TYPES = [
   "audio/mpeg",
   "audio/wav",
@@ -24,14 +28,64 @@ const ALLOWED_MIME_TYPES = [
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
-export const TranscriptionUploader = () => {
+export function TranscriptionUploader({ onUploadComplete }: TranscriptionUploaderProps) {
   const [files, setFiles] = useState<FileWithProgress[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const { toast } = useToast();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles = acceptedFiles.map((file) => Object.assign(file, { progress: 0 }));
     setFiles((prev) => [...prev, ...newFiles]);
   }, []);
+
+  const handleUpload = async (files: File[]) => {
+    if (files.length === 0) return;
+
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            setUploadProgress((prev) => {
+              const newProgress = Math.round((event.loaded * 100) / event.total);
+              return newProgress;
+            });
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            const result = JSON.parse(xhr.responseText);
+            onUploadComplete?.(result);
+            toast.success("File uploaded successfully!");
+          } else {
+            throw new Error("Upload failed");
+          }
+        };
+
+        xhr.onerror = () => {
+          throw new Error("Upload failed");
+        };
+
+        xhr.open("POST", "/api/upload");
+        await xhr.send(formData);
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Failed to upload file");
+      setUploadProgress(0);
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -84,103 +138,6 @@ export const TranscriptionUploader = () => {
     }
   };
 
-  const handleUpload = async (files: File[]) => {
-    console.log("🎯 Starting upload process with files:", files.map(f => ({ name: f.name, size: f.size, type: f.type })));
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    try {
-      for (const file of files) {
-        console.log("📁 Processing file:", file.name);
-        
-        // Simulate upload progress
-        const progressInterval = setInterval(() => {
-          setUploadProgress(prev => {
-            if (prev >= 90) {
-              clearInterval(progressInterval);
-              return prev;
-            }
-            return prev + 10;
-          });
-        }, 500);
-        
-        // Sanitize filename - remove non-ASCII characters and spaces
-        const sanitizedFilename = file.name.replace(/[^\x00-\x7F]/g, '').replace(/\s+/g, '_');
-        
-        // Upload file to Supabase Storage
-        console.log("⬆️ Uploading file to storage...");
-        const uploadPath = `uploads/${Date.now()}_${sanitizedFilename}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("audio")
-          .upload(uploadPath, file);
-
-        if (uploadError) {
-          console.error("❌ Storage upload error:", uploadError);
-          throw new Error(`Erreur lors de l'upload de ${file.name}: ${uploadError.message}`);
-        }
-
-        console.log("✅ File uploaded successfully:", uploadData);
-        setUploadProgress(95);
-
-        // Call transcription function
-        console.log("🎙️ Starting transcription process...");
-        const { data: transcriptionData, error: transcriptionError } = await supabase.functions
-          .invoke("transcribe-simple", {
-            body: { filePath: uploadPath },
-          });
-
-        if (transcriptionError) {
-          console.error("❌ Transcription error:", transcriptionError);
-          throw new Error(`Erreur lors de la transcription de ${file.name}: ${transcriptionError.message}`);
-        }
-
-        if (!transcriptionData?.transcription) {
-          console.error("❌ No transcription data received");
-          throw new Error(`Erreur: Aucune transcription reçue pour ${file.name}`);
-        }
-
-        console.log("✅ Transcription completed:", transcriptionData);
-        setUploadProgress(100);
-
-        // Save to history
-        console.log("💾 Saving to history...");
-        const { error: historyError } = await supabase
-          .from("history")
-          .insert({
-            filename: file.name,
-            file_path: uploadPath,
-            transcription: transcriptionData.transcription,
-            file_type: "transcription"
-          });
-
-        if (historyError) {
-          console.error("❌ History save error:", historyError);
-          throw new Error(`Erreur lors de la sauvegarde de l'historique: ${historyError.message}`);
-        }
-
-        console.log("✅ History saved successfully");
-
-        toast({
-          title: "Transcription terminée",
-          description: `Le fichier ${file.name} a été transcrit avec succès.`,
-        });
-
-        clearInterval(progressInterval);
-      }
-    } catch (error: any) {
-      console.error("❌ Global error:", error);
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: error.message,
-      });
-    } finally {
-      console.log("🏁 Upload process completed");
-      setIsUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
   return (
     <div className="container mx-auto p-4">
       <div {...getRootProps()} className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer">
@@ -218,4 +175,4 @@ export const TranscriptionUploader = () => {
       )}
     </div>
   );
-};
+}

@@ -1,8 +1,13 @@
+import { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Upload, Settings, Scissors, FileType, FileText, MessageSquare, Database } from "lucide-react";
 
-export function Layout({ children }) {
+interface LayoutProps {
+  children: ReactNode;
+}
+
+export function Layout({ children }: LayoutProps) {
   return (
     <div className="flex h-screen">
       <aside className="w-64 border-r bg-background">
