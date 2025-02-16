@@ -8,6 +8,11 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
+interface AuthError {
+  message: string;
+  status?: number;
+}
+
 export function AuthPage() {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -25,7 +30,7 @@ export function AuthPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    console.log("🔄 Tentative de connexion pour:", loginEmail);
+    console.log(" Tentative de connexion pour:", loginEmail);
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -34,24 +39,26 @@ export function AuthPage() {
       });
 
       if (error) {
-        console.error("❌ Erreur de connexion:", error.message);
+        const authError = error as AuthError;
+        console.error(" Erreur de connexion:", authError.message);
         throw error;
       }
 
-      console.log("✅ Connexion réussie pour:", data.user?.email);
+      console.log(" Connexion réussie pour:", data.user?.email);
       toast({
         title: "Connexion réussie",
         description: "Vous êtes maintenant connecté.",
       });
       navigate("/");
-    } catch (error: any) {
-      console.error("❌ Erreur lors de la connexion:", error.message);
+    } catch (error) {
+      const authError = error as AuthError;
+      console.error(" Erreur lors de la connexion:", authError.message);
       toast({
         variant: "destructive",
         title: "Erreur de connexion",
-        description: error.message === "Invalid login credentials"
+        description: authError.message === "Invalid login credentials"
           ? "Email ou mot de passe incorrect"
-          : error.message,
+          : authError.message,
       });
     } finally {
       setLoading(false);
@@ -61,7 +68,7 @@ export function AuthPage() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    console.log("🔄 Tentative d'inscription pour:", signupEmail);
+    console.log(" Tentative d'inscription pour:", signupEmail);
 
     if (signupPassword !== signupConfirmPassword) {
       toast({
@@ -80,22 +87,24 @@ export function AuthPage() {
       });
 
       if (error) {
-        console.error("❌ Erreur d'inscription:", error.message);
+        const authError = error as AuthError;
+        console.error(" Erreur d'inscription:", authError.message);
         throw error;
       }
 
-      console.log("✅ Inscription réussie pour:", data.user?.email);
+      console.log(" Inscription réussie pour:", data.user?.email);
       toast({
         title: "Inscription réussie",
         description: "Votre compte a été créé avec succès. Vous pouvez maintenant vous connecter.",
       });
       navigate("/");
-    } catch (error: any) {
-      console.error("❌ Erreur lors de l'inscription:", error.message);
+    } catch (error) {
+      const authError = error as AuthError;
+      console.error(" Erreur lors de l'inscription:", authError.message);
       toast({
         variant: "destructive",
         title: "Erreur d'inscription",
-        description: error.message,
+        description: authError.message,
       });
     } finally {
       setLoading(false);

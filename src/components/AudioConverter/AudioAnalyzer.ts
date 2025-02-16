@@ -3,56 +3,32 @@ import { SUPPORTED_FORMATS } from '../AudioSplitter';
 
 export class AudioAnalyzer {
   private audioContext: AudioContext;
+  private analyser: AnalyserNode;
+  private dataArray: Uint8Array;
+  private bufferLength: number;
 
   constructor() {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    this.audioContext = new AudioContextClass();
+    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    this.analyser = this.audioContext.createAnalyser();
+    this.analyser.fftSize = 2048;
+    this.bufferLength = this.analyser.frequencyBinCount;
+    this.dataArray = new Uint8Array(this.bufferLength);
   }
 
-  async analyzeFile(file: File): Promise<AudioMetadata> {
-    console.log('Analyzing file:', {
-      name: file.name,
-      type: file.type,
-      size: file.size
-    });
-
-    const format = this.detectFormat(file);
-
-    let duration = 0;
-    try {
-      if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
-      }
-      const arrayBuffer = await file.arrayBuffer();
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-      duration = audioBuffer.duration;
-      console.log(`Audio duration = ${duration.toFixed(2)}s`);
-    } catch (err) {
-      console.warn("Impossible d'extraire la durée", err);
-    }
-
-    console.log('Analysis results:', {
-      format,
-      size: file.size,
-      duration
-    });
-
+  async analyzeFile(file: File): Promise<{ duration: number; sampleRate: number }> {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+    
     return {
-      format,
-      size: file.size,
-      duration
+      duration: audioBuffer.duration,
+      sampleRate: audioBuffer.sampleRate,
     };
   }
 
-  private detectFormat(file: File): string {
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    const mimeType = Object.entries(SUPPORTED_FORMATS).find(([, exts]) => 
-      exts.includes(`.${extension}`)
-    )?.[0];
-
-    if (!extension || !mimeType) {
-      throw new Error(`Format non supporté: ${extension}`);
+  // Méthode pour nettoyer les ressources
+  dispose() {
+    if (this.audioContext.state !== 'closed') {
+      this.audioContext.close();
     }
-    return mimeType;
   }
 }
