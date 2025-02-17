@@ -221,7 +221,10 @@ export function AudioConverter() {
           </div>
           <div className="grid w-full max-w-sm items-center gap-1.5">
             <Label htmlFor="output-format">Output Format</Label>
-            <Select value={outputFormat} onValueChange={setOutputFormat}>
+            <Select 
+              value={outputFormat} 
+              onValueChange={(value: typeof SUPPORTED_FORMATS[number]) => setOutputFormat(value)}
+            >
               <SelectTrigger id="output-format">
                 <SelectValue placeholder="Select format" />
               </SelectTrigger>
