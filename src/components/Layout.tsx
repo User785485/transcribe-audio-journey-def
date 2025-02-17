@@ -13,11 +13,11 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const store = useStore();
+  const { addToUploadQueue } = useStore();
 
   const handleFilesAccepted = (files: File[]) => {
     files.forEach(file => {
-      store.addToUploadQueue(file);
+      addToUploadQueue(file);
     });
   };
 
