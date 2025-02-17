@@ -1,10 +1,8 @@
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
-import { Transcription } from "@/types/folder";
 import { FileAudio, MoreVertical } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Transcription } from "@/types/folder";
 
 interface Props {
   files: Transcription[];
@@ -21,6 +19,7 @@ export function FolderContents({ files, onDelete }: Props) {
         >
           <FileAudio className="h-4 w-4 text-muted-foreground mr-2" />
           <span className="text-sm flex-1">{file.filename}</span>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-6 w-6 ml-2">

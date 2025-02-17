@@ -33,11 +33,9 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
 
     for (const fileData of newFiles) {
       try {
-        const { error } = await supabase.storage
+        const { data, error } = await supabase.storage
           .from("audio")
-          .upload(`${fileData.id}-${fileData.file.name}`, fileData.file, {
-            cacheControl: "3600",
-          });
+          .upload(`${fileData.id}-${fileData.file.name}`, fileData.file);
 
         if (error) throw error;
 
@@ -47,7 +45,7 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
           )
         );
 
-        if (onUploadComplete) {
+        if (onUploadComplete && data) {
           onUploadComplete([`${fileData.id}-${fileData.file.name}`]);
         }
 
