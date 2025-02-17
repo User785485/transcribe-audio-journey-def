@@ -1,6 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import { Folder, Transcription } from '@/types/folder'
-import { useStore } from '@/store/useStore'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -15,7 +13,7 @@ export class SupabaseService {
   private static retryCount = 3
   private static retryDelay = 1000
 
-  static async fetchFoldersWithRetry(): Promise<Folder[]> {
+  static async fetchFoldersWithRetry(): Promise<any[]> {
     for (let i = 0; i < this.retryCount; i++) {
       try {
         const { data, error } = await supabase
@@ -33,7 +31,7 @@ export class SupabaseService {
     return []
   }
 
-  static async fetchTranscriptionsWithRetry(): Promise<Transcription[]> {
+  static async fetchTranscriptionsWithRetry(): Promise<any[]> {
     for (let i = 0; i < this.retryCount; i++) {
       try {
         const { data, error } = await supabase
@@ -71,7 +69,7 @@ export class SupabaseService {
     if (error) throw error
   }
 
-  static async createFolder(name: string): Promise<Folder> {
+  static async createFolder(name: string): Promise<any> {
     const { data, error } = await supabase
       .from('folders')
       .insert([{ name }])

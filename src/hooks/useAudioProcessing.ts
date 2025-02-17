@@ -43,7 +43,7 @@ export function useAudioProcessing({
         .upload(path, file, {
           cacheControl: '3600',
           upsert: false,
-          onUploadProgress: onProgress
+          onProgress
         });
 
       if (uploadError) {
