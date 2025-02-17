@@ -1,94 +1,196 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Folder as FolderIcon, ChevronRight, ChevronDown, MoreVertical, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FolderContents } from "./FolderContents";
 import { Folder } from "@/types/folder";
+import { supabase } from "@/lib/supabase";
+import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-interface Props {
-  folder: Folder;
-  level?: number;
-  openFolders: Set<string>;
-  onToggleFolder: (folderId: string) => void;
-  onRename: (folderId: string, newName: string) => void;
-  onDelete: (folderId: string) => void;
-  onDeleteFile: (fileId: string) => void;
-}
+export function FolderTree() {
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
 
-export function FolderTree({
-  folder,
-  level = 0,
-  openFolders,
-  onToggleFolder,
-  onRename,
-  onDelete,
-  onDeleteFile
-}: Props) {
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(folder.name);
-  const isOpen = openFolders.has(folder.id);
+  useEffect(() => {
+    fetchFolders();
+  }, []);
 
-  const handleRename = () => {
-    if (newName.trim() && newName !== folder.name) {
-      onRename(folder.id, newName);
+  const fetchFolders = async () => {
+    try {
+      console.log("Fetching folders...");
+      const { data: foldersData, error: foldersError } = await supabase
+        .from("folders")
+        .select("*");
+
+      if (foldersError) {
+        console.error("Error fetching folders:", foldersError);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to fetch folders"
+        });
+        return;
+      }
+
+      console.log("Fetched folders:", foldersData);
+
+      const { data: transcriptionsData, error: transcriptionsError } = await supabase
+        .from("transcriptions")
+        .select("*");
+
+      if (transcriptionsError) {
+        console.error("Error fetching transcriptions:", transcriptionsError);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to fetch transcriptions"
+        });
+        return;
+      }
+
+      console.log("Fetched transcriptions:", transcriptionsData);
+
+      // Organize data into a tree structure
+      const organizedFolders = foldersData.map(folder => ({
+        ...folder,
+        transcriptions: transcriptionsData.filter(t => t.folder_id === folder.id) || [],
+        subfolders: []
+      }));
+
+      console.log("Organized folders:", organizedFolders);
+      setFolders(organizedFolders);
+    } catch (error) {
+      console.error("Unexpected error:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred"
+      });
+    } finally {
+      setLoading(false);
     }
-    setIsRenaming(false);
   };
 
-  return (
-    <div style={{ paddingLeft: `${level * 16}px` }}>
-      <Collapsible
-        open={isOpen}
-        onOpenChange={() => onToggleFolder(folder.id)}
-      >
-        <div className="flex items-center py-1">
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              {isOpen ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </Button>
-          </CollapsibleTrigger>
+  const handleRename = async (folderId: string, newName: string) => {
+    try {
+      console.log("Renaming folder:", folderId, "to:", newName);
+      const { error } = await supabase
+        .from("folders")
+        .update({ name: newName })
+        .eq("id", folderId);
 
-          <FolderIcon className="h-4 w-4 text-muted-foreground mx-2" />
-          
-          {isRenaming ? (
-            <div className="flex items-center gap-2">
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="h-8"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleRename();
-                  if (e.key === "Escape") setIsRenaming(false);
-                }}
-                autoFocus
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRename}
-              >
-                Save
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsRenaming(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <>
+      if (error) throw error;
+
+      toast({
+        description: "Folder renamed successfully"
+      });
+      
+      fetchFolders();
+    } catch (error) {
+      console.error("Error renaming folder:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to rename folder"
+      });
+    }
+  };
+
+  const handleDelete = async (folderId: string) => {
+    try {
+      console.log("Deleting folder:", folderId);
+      const { error } = await supabase
+        .from("folders")
+        .delete()
+        .eq("id", folderId);
+
+      if (error) throw error;
+
+      toast({
+        description: "Folder deleted successfully"
+      });
+      
+      fetchFolders();
+    } catch (error) {
+      console.error("Error deleting folder:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete folder"
+      });
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
+    try {
+      console.log("Deleting file:", fileId);
+      const { error } = await supabase
+        .from("transcriptions")
+        .delete()
+        .eq("id", fileId);
+
+      if (error) throw error;
+
+      toast({
+        description: "File deleted successfully"
+      });
+      
+      fetchFolders();
+    } catch (error) {
+      console.error("Error deleting file:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete file"
+      });
+    }
+  };
+
+  const toggleFolder = (folderId: string) => {
+    setOpenFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  };
+
+  if (loading) {
+    return <div className="p-4">Loading folders...</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {folders.map(folder => (
+        <div key={folder.id} className="rounded-lg border bg-card">
+          <Collapsible
+            open={openFolders.has(folder.id)}
+            onOpenChange={() => toggleFolder(folder.id)}
+          >
+            <div className="flex items-center p-4">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6">
+                  {openFolders.has(folder.id) ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+
+              <FolderIcon className="h-4 w-4 text-muted-foreground mx-2" />
               <span className="text-sm font-medium">{folder.name}</span>
-              <div className="ml-auto flex items-center">
+
+              <div className="ml-auto">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-6 w-6">
@@ -96,7 +198,12 @@ export function FolderTree({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setIsRenaming(true)}>
+                    <DropdownMenuItem onClick={() => {
+                      const newName = prompt("Enter new name:", folder.name);
+                      if (newName && newName !== folder.name) {
+                        handleRename(folder.id, newName);
+                      }
+                    }}>
                       <Pencil className="h-4 w-4 mr-2" />
                       Rename
                     </DropdownMenuItem>
@@ -120,7 +227,7 @@ export function FolderTree({
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => onDelete(folder.id)}
+                            onClick={() => handleDelete(folder.id)}
                             className="bg-red-600"
                           >
                             Delete
@@ -131,39 +238,21 @@ export function FolderTree({
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            </>
-          )}
-        </div>
-
-        <CollapsibleContent>
-          {folder.subfolders?.length > 0 && (
-            <>
-              {folder.subfolders.map((subfolder) => (
-                <FolderTree
-                  key={subfolder.id}
-                  folder={subfolder}
-                  level={level + 1}
-                  openFolders={openFolders}
-                  onToggleFolder={onToggleFolder}
-                  onRename={onRename}
-                  onDelete={onDelete}
-                  onDeleteFile={onDeleteFile}
-                />
-              ))}
-              <Separator className="my-2" />
-            </>
-          )}
-          
-          {folder.transcriptions?.length > 0 && (
-            <div className="mt-2">
-              <FolderContents
-                files={folder.transcriptions}
-                onDelete={onDeleteFile}
-              />
             </div>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
+
+            <CollapsibleContent>
+              {folder.transcriptions?.length > 0 && (
+                <div className="p-4 pt-0">
+                  <FolderContents
+                    files={folder.transcriptions}
+                    onDelete={handleDeleteFile}
+                  />
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      ))}
     </div>
   );
 }
