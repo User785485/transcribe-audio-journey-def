@@ -6,13 +6,11 @@ import { useToast } from '@/hooks/use-toast';
 interface UseAudioProcessingOptions {
   maxSize?: number;
   allowedTypes?: string[];
-  onProgress?: (progress: number) => void;
 }
 
 export function useAudioProcessing({
   maxSize = 100 * 1024 * 1024,
-  allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/m4a'],
-  onProgress
+  allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/m4a']
 }: UseAudioProcessingOptions = {}) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { setProcessing } = useStore();
@@ -42,8 +40,7 @@ export function useAudioProcessing({
         .from('audio')
         .upload(path, file, {
           cacheControl: '3600',
-          upsert: false,
-          onProgress
+          upsert: false
         });
 
       if (uploadError) {
@@ -63,7 +60,7 @@ export function useAudioProcessing({
       setIsProcessing(false);
       setProcessing(false);
     }
-  }, [maxSize, allowedTypes, onProgress, setProcessing, toast]);
+  }, [maxSize, allowedTypes, setProcessing, toast]);
 
   return {
     isProcessing,

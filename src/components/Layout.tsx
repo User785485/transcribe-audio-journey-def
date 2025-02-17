@@ -1,7 +1,4 @@
 import { ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Upload, Settings, Scissors, FileType, FileText, MessageSquare, Database } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AudioConverter } from "./AudioConverter/AudioConverter";
 import { TranscriptionList } from "./TranscriptionList/TranscriptionList";
@@ -9,7 +6,6 @@ import { Prompts } from "./Prompts";
 import { FileUpload } from "./FileUpload";
 import { Card } from "./ui/card";
 import { Mic, FolderOpen, Wand2, FileAudio } from "lucide-react";
-import { Sidebar } from "@/components/Sidebar";
 import { useStore } from "@/store/useStore";
 
 interface LayoutProps {
@@ -17,15 +13,21 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { addFiles } = useStore();
+  const store = useStore();
+
+  const handleFilesAccepted = (files: File[]) => {
+    files.forEach(file => {
+      store.addToUploadQueue(file);
+    });
+  };
 
   return (
     <div className="flex h-screen">
-      <Sidebar />
+      <div className="w-64 border-r bg-background" />
       <main className="flex-1 p-6 overflow-auto">
         <div className="max-w-4xl mx-auto space-y-6">
           <FileUpload 
-            onFilesAccepted={addFiles}
+            onFilesAccepted={handleFilesAccepted}
             accept={{ 'audio/*': ['.mp3', '.wav', '.ogg', '.m4a'] }}
           />
           <div className="container py-8">
@@ -56,7 +58,7 @@ export function Layout({ children }: LayoutProps) {
 
                 <TabsContent value="transcribe" className="space-y-6">
                   <FileUpload 
-                    onFilesAccepted={addFiles}
+                    onFilesAccepted={handleFilesAccepted}
                     accept={{ 'audio/*': ['.mp3', '.wav', '.ogg', '.m4a'] }}
                   />
                 </TabsContent>
