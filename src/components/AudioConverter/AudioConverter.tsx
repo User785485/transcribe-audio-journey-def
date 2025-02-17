@@ -10,24 +10,15 @@ import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { toBlobURL } from "@ffmpeg/util";
 import { useStore } from "@/store/useStore";
 import { useToast } from "@/hooks/use-toast";
+import { AudioFile, AudioFileStatus } from "@/types/audio";
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
-const SUPPORTED_FORMATS = ["mp3", "wav", "ogg", "m4a"];
-
-interface AudioFile {
-  id: string;
-  name: string;
-  file: File;
-  progress: number;
-  status: "pending" | "converting" | "done" | "error";
-  outputUrl?: string;
-  error?: string;
-}
+const SUPPORTED_FORMATS = ["mp3", "wav", "ogg", "m4a"] as const;
 
 export function AudioConverter() {
   const [files, setFiles] = useState<AudioFile[]>([]);
-  const [outputFormat, setOutputFormat] = useState("mp3");
+  const [outputFormat, setOutputFormat] = useState<typeof SUPPORTED_FORMATS[number]>("mp3");
   const { isFFmpegLoaded, setFFmpegLoaded, setProcessing } = useStore();
   const { toast } = useToast();
   const ffmpeg = new FFmpeg();
@@ -79,15 +70,17 @@ export function AudioConverter() {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-      const newFiles = Array.from(event.target.files).map(file => {
+      const newFiles: AudioFile[] = Array.from(event.target.files).map(file => {
         const error = validateFile(file);
         return {
           id: Math.random().toString(36).substring(7),
           name: file.name,
           file,
           progress: 0,
-          status: error ? "error" : "pending" as const,
-          error
+          status: error ? "error" : "pending",
+          error: error || undefined,
+          size: file.size,
+          createdAt: new Date()
         };
       });
       setFiles(prev => [...prev, ...newFiles]);
@@ -124,7 +117,7 @@ export function AudioConverter() {
       setFiles(prev =>
         prev.map(f =>
           f.id === file.id
-            ? { ...f, status: "converting", progress: 0 }
+            ? { ...f, status: "converting" as AudioFileStatus, progress: 0 }
             : f
         )
       );
@@ -147,7 +140,7 @@ export function AudioConverter() {
       setFiles(prev =>
         prev.map(f =>
           f.id === file.id
-            ? { ...f, status: "done", progress: 100, outputUrl: url }
+            ? { ...f, status: "done" as AudioFileStatus, progress: 100, outputUrl: url }
             : f
         )
       );
@@ -156,18 +149,19 @@ export function AudioConverter() {
       await ffmpeg.deleteFile(outputFileName);
 
     } catch (error) {
-      console.error("Error converting file:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error("Error converting file:", errorMessage);
       setFiles(prev =>
         prev.map(f =>
           f.id === file.id
-            ? { ...f, status: "error", progress: 0, error: error.message }
+            ? { ...f, status: "error" as AudioFileStatus, progress: 0, error: errorMessage }
             : f
         )
       );
       toast({
         variant: "destructive",
         title: "Conversion Error",
-        description: `Failed to convert ${file.name}: ${error.message}`
+        description: `Failed to convert ${file.name}: ${errorMessage}`
       });
     }
   };
