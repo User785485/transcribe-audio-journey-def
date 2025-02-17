@@ -1,234 +1,133 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Folder, Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
-import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { useState, useCallback } from "react";
+import { useDropzone } from "react-dropzone";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Card } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { Upload, X } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
-interface UploadJob {
+interface FileUploadProps {
+  onUploadComplete?: (files: string[]) => void;
+}
+
+interface UploadingFile {
   id: string;
   file: File;
   progress: number;
-  status: 'waiting' | 'uploading' | 'transcribing' | 'done' | 'error';
-  transcription?: string;
+  error?: string;
 }
 
-export function FileUpload() {
-  const [jobs, setJobs] = useState<UploadJob[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [folders, setFolders] = useState<Array<{ id: string; name: string }>>([]);
-
-  useEffect(() => {
-    fetchFolders();
-  }, []);
-
-  const fetchFolders = async () => {
-    console.log('Fetching folders...');
-    const { data, error } = await supabase
-      .from('folders')
-      .select('id, name');
-
-    if (error) {
-      console.error('Error fetching folders:', error);
-      toast.error('Failed to fetch folders');
-      return;
-    }
-
-    console.log('Folders fetched:', data);
-    setFolders(data || []);
-  };
+export function FileUpload({ onUploadComplete }: FileUploadProps) {
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const { toast } = useToast();
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    if (!selectedFolder) {
-      toast.error('Please select a folder first');
-      return;
-    }
-
-    console.log('Files dropped:', acceptedFiles);
-    const newJobs = acceptedFiles.map(file => ({
+    const newFiles = acceptedFiles.map((file) => ({
       id: Math.random().toString(36).substring(7),
       file,
       progress: 0,
-      status: 'waiting' as const
     }));
 
-    setJobs(prev => [...prev, ...newJobs]);
+    setUploadingFiles((prev) => [...prev, ...newFiles]);
 
-    // Process files in parallel with a limit of 3 concurrent uploads
-    const batchSize = 3;
-    for (let i = 0; i < newJobs.length; i += batchSize) {
-      const batch = newJobs.slice(i, i + batchSize);
-      await Promise.all(batch.map(job => processFile(job, selectedFolder)));
-    }
-  }, [selectedFolder]);
+    for (const fileData of newFiles) {
+      try {
+        const { error } = await supabase.storage
+          .from("audio")
+          .upload(`${fileData.id}-${fileData.file.name}`, fileData.file, {
+            cacheControl: "3600",
+          });
 
-  const processFile = async (job: UploadJob, folderId: string) => {
-    try {
-      console.log(`Processing file: ${job.file.name}`);
-      // Update status to uploading
-      setJobs(prev => prev.map(j => 
-        j.id === job.id ? { ...j, status: 'uploading' } : j
-      ));
+        if (error) throw error;
 
-      // Upload to Supabase Storage
-      const { error: uploadError, data } = await supabase.storage
-        .from('audio')
-        .upload(`${folderId}/${job.file.name}`, job.file, {
-          cacheControl: '3600',
-          upsert: false
+        setUploadingFiles((prev) =>
+          prev.map((f) =>
+            f.id === fileData.id ? { ...f, progress: 100 } : f
+          )
+        );
+
+        if (onUploadComplete) {
+          onUploadComplete([`${fileData.id}-${fileData.file.name}`]);
+        }
+
+        toast({
+          title: "Success",
+          description: "File uploaded successfully",
         });
+      } catch (error) {
+        console.error("Upload error:", error);
+        setUploadingFiles((prev) =>
+          prev.map((f) =>
+            f.id === fileData.id
+              ? { ...f, error: "Upload failed", progress: 0 }
+              : f
+          )
+        );
 
-      if (uploadError) throw uploadError;
-
-      console.log(`File uploaded: ${job.file.name}`);
-      setJobs(prev => prev.map(j => 
-        j.id === job.id ? { ...j, status: 'transcribing', progress: 100 } : j
-      ));
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('audio')
-        .getPublicUrl(`${folderId}/${job.file.name}`);
-
-      console.log(`Starting transcription for: ${job.file.name}`);
-      // Call your transcription API here
-      const response = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: publicUrl })
-      });
-
-      if (!response.ok) throw new Error('Transcription failed');
-
-      const { transcription } = await response.json();
-
-      // Save transcription to database
-      const { error: dbError } = await supabase
-        .from('transcriptions')
-        .insert({
-          filename: job.file.name,
-          content: transcription,
-          folder_id: folderId
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to upload file",
         });
-
-      if (dbError) throw dbError;
-
-      console.log(`Transcription complete for: ${job.file.name}`);
-      // Update job status to done
-      setJobs(prev => prev.map(j => 
-        j.id === job.id ? { ...j, status: 'done', transcription } : j
-      ));
-
-      toast.success(`${job.file.name} transcribed successfully`);
-
-    } catch (error) {
-      console.error(`Error processing ${job.file.name}:`, error);
-      setJobs(prev => prev.map(j => 
-        j.id === job.id ? { ...j, status: 'error' } : j
-      ));
-      toast.error(`Failed to process ${job.file.name}`);
+      }
     }
-  };
-
-  const removeJob = (jobId: string) => {
-    setJobs(prev => prev.filter(j => j.id !== jobId));
-  };
+  }, [onUploadComplete, toast]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'audio/*': ['.mp3', '.wav', '.m4a', '.ogg', '.opus']
-    }
+      "audio/*": [".mp3", ".wav", ".m4a", ".ogg", ".opus"],
+    },
+    maxFiles: 10,
   });
 
+  const removeFile = (id: string) => {
+    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
   return (
-    <div className="space-y-6">
-      <Card className="p-6">
-        <div className="flex gap-4 mb-6">
-          <select
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            value={selectedFolder || ''}
-            onChange={(e) => setSelectedFolder(e.target.value)}
-          >
-            <option value="">Select a folder</option>
-            {folders.map(folder => (
-              <option key={folder.id} value={folder.id}>
-                {folder.name}
-              </option>
-            ))}
-          </select>
+    <div className="space-y-4">
+      <div
+        {...getRootProps()}
+        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+          isDragActive ? "border-primary bg-primary/10" : "border-muted"
+        }`}
+      >
+        <input {...getInputProps()} />
+        <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          {isDragActive
+            ? "Drop the files here..."
+            : "Drag & drop audio files here, or click to select files"}
+        </p>
+      </div>
 
-          <Button
-            variant="outline"
-            onClick={fetchFolders}
-          >
-            <Folder className="w-4 h-4 mr-2" />
-            Refresh Folders
-          </Button>
-        </div>
-
-        <div
-          {...getRootProps()}
-          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-            ${isDragActive ? 'border-primary bg-primary/10' : 'border-gray-300 hover:border-primary'}
-            ${!selectedFolder ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <input {...getInputProps()} />
-          <Upload className="w-12 h-12 mx-auto mb-4 text-primary" />
-          <h3 className="text-lg font-semibold mb-2">
-            Drop audio files here
-          </h3>
-          <p className="text-sm text-gray-500">
-            Supports MP3, WAV, M4A, OGG, and OPUS files
-          </p>
-        </div>
-      </Card>
-
-      {jobs.length > 0 && (
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Upload Queue</h3>
-          <div className="space-y-4">
-            {jobs.map(job => (
-              <div key={job.id} className="flex items-center gap-4">
+      {uploadingFiles.length > 0 && (
+        <div className="space-y-2">
+          {uploadingFiles.map((file) => (
+            <Card key={file.id} className="p-4">
+              <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">{job.file.name}</span>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium">{file.file.name}</span>
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => removeJob(job.id)}
+                      onClick={() => removeFile(file.id)}
                     >
-                      <X className="w-4 h-4" />
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
-                  <Progress value={job.progress} className="h-2" />
-                  <div className="flex items-center gap-2 mt-1">
-                    {job.status === 'uploading' && (
-                      <span className="text-sm text-gray-500">Uploading...</span>
-                    )}
-                    {job.status === 'transcribing' && (
-                      <span className="text-sm text-gray-500">Transcribing...</span>
-                    )}
-                    {job.status === 'done' && (
-                      <span className="text-sm text-green-500 flex items-center gap-1">
-                        <CheckCircle className="w-4 h-4" />
-                        Complete
-                      </span>
-                    )}
-                    {job.status === 'error' && (
-                      <span className="text-sm text-red-500 flex items-center gap-1">
-                        <AlertCircle className="w-4 h-4" />
-                        Failed
-                      </span>
-                    )}
-                  </div>
+                  <Progress value={file.progress} className="h-2" />
                 </div>
               </div>
-            ))}
-          </div>
-        </Card>
+              {file.error && (
+                <p className="text-sm text-destructive mt-2">{file.error}</p>
+              )}
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );

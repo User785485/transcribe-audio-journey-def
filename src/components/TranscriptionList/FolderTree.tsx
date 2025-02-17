@@ -1,18 +1,20 @@
 import { useState, useEffect } from "react";
 import { Folder as FolderIcon, ChevronRight, ChevronDown, MoreVertical, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { FolderContents } from "./FolderContents";
-import { Folder } from "@/types/folder";
+import { Folder, Transcription } from "@/types/folder";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
+interface ExtendedFolder extends Folder {
+  transcriptions: Transcription[];
+}
+
 export function FolderTree() {
-  const [folders, setFolders] = useState<Folder[]>([]);
+  const [folders, setFolders] = useState<ExtendedFolder[]>([]);
   const [loading, setLoading] = useState(true);
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
   const { toast } = useToast();
@@ -59,8 +61,7 @@ export function FolderTree() {
       // Organize data into a tree structure
       const organizedFolders = foldersData.map(folder => ({
         ...folder,
-        transcriptions: transcriptionsData.filter(t => t.folder_id === folder.id) || [],
-        subfolders: []
+        transcriptions: transcriptionsData.filter(t => t.folder_id === folder.id) || []
       }));
 
       console.log("Organized folders:", organizedFolders);
@@ -241,7 +242,7 @@ export function FolderTree() {
             </div>
 
             <CollapsibleContent>
-              {folder.transcriptions && folder.transcriptions.length > 0 && (
+              {folder.transcriptions.length > 0 && (
                 <div className="p-4 pt-0">
                   <FolderContents
                     files={folder.transcriptions}

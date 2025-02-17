@@ -21,9 +21,6 @@ export function FolderContents({ files, onDelete }: Props) {
         >
           <FileAudio className="h-4 w-4 text-muted-foreground mr-2" />
           <span className="text-sm flex-1">{file.filename}</span>
-          <p className="text-sm text-gray-500 mb-4">
-            Created: {format(new Date(file.created_at), "PPP")}
-          </p>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-6 w-6 ml-2">
