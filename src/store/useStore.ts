@@ -8,7 +8,7 @@ interface AppState {
   isFFmpegLoaded: boolean
   currentFolder: string | null
   isProcessing: boolean
-  uploadQueue: string[]
+  uploadQueue: File[]
   errors: Record<string, string>
   
   // Actions
@@ -17,7 +17,7 @@ interface AppState {
   setFFmpegLoaded: (loaded: boolean) => void
   setCurrentFolder: (folderId: string | null) => void
   setProcessing: (processing: boolean) => void
-  addToUploadQueue: (fileId: string) => void
+  addToUploadQueue: (file: File) => void
   removeFromUploadQueue: (fileId: string) => void
   setError: (key: string, error: string) => void
   clearError: (key: string) => void
@@ -39,11 +39,15 @@ export const useStore = create<AppState>()(
       setFFmpegLoaded: (loaded) => set({ isFFmpegLoaded: loaded }),
       setCurrentFolder: (folderId) => set({ currentFolder: folderId }),
       setProcessing: (processing) => set({ isProcessing: processing }),
-      addToUploadQueue: (fileId) => 
-        set((state) => ({ uploadQueue: [...state.uploadQueue, fileId] })),
-      removeFromUploadQueue: (fileId) =>
+      addToUploadQueue: (file) => 
         set((state) => ({ 
-          uploadQueue: state.uploadQueue.filter(id => id !== fileId) 
+          uploadQueue: [...state.uploadQueue, file] 
+        })),
+      removeFromUploadQueue: (fileId) =>
+        set((state) => ({
+          uploadQueue: state.uploadQueue.filter(
+            (file) => file.name !== fileId
+          ),
         })),
       setError: (key, error) =>
         set((state) => ({ errors: { ...state.errors, [key]: error } })),
