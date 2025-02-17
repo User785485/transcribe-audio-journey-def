@@ -64,7 +64,8 @@ export function AudioConverter() {
         )
       );
 
-      await ffmpeg.writeFile(inputFileName, await file.file.arrayBuffer());
+      const fileData = new Uint8Array(await file.file.arrayBuffer());
+      await ffmpeg.writeFile(inputFileName, fileData);
 
       await ffmpeg.exec([
         "-i", inputFileName,
