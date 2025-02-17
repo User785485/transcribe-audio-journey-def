@@ -241,7 +241,7 @@ export function FolderTree() {
             </div>
 
             <CollapsibleContent>
-              {folder.transcriptions?.length > 0 && (
+              {folder.transcriptions && folder.transcriptions.length > 0 && (
                 <div className="p-4 pt-0">
                   <FolderContents
                     files={folder.transcriptions}

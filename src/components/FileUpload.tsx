@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,21 +20,23 @@ export function FileUpload() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [folders, setFolders] = useState<Array<{ id: string; name: string }>>([]);
 
-  // Fetch folders on component mount
-  useState(() => {
+  useEffect(() => {
     fetchFolders();
   }, []);
 
   const fetchFolders = async () => {
+    console.log('Fetching folders...');
     const { data, error } = await supabase
       .from('folders')
       .select('id, name');
 
     if (error) {
+      console.error('Error fetching folders:', error);
       toast.error('Failed to fetch folders');
       return;
     }
 
+    console.log('Folders fetched:', data);
     setFolders(data || []);
   };
 
@@ -44,6 +46,7 @@ export function FileUpload() {
       return;
     }
 
+    console.log('Files dropped:', acceptedFiles);
     const newJobs = acceptedFiles.map(file => ({
       id: Math.random().toString(36).substring(7),
       file,
@@ -63,26 +66,23 @@ export function FileUpload() {
 
   const processFile = async (job: UploadJob, folderId: string) => {
     try {
+      console.log(`Processing file: ${job.file.name}`);
       // Update status to uploading
       setJobs(prev => prev.map(j => 
         j.id === job.id ? { ...j, status: 'uploading' } : j
       ));
 
       // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError, data } = await supabase.storage
         .from('audio')
         .upload(`${folderId}/${job.file.name}`, job.file, {
-          onUploadProgress: (progress) => {
-            const percent = (progress.loaded / progress.total!) * 100;
-            setJobs(prev => prev.map(j => 
-              j.id === job.id ? { ...j, progress: percent } : j
-            ));
-          }
+          cacheControl: '3600',
+          upsert: false
         });
 
       if (uploadError) throw uploadError;
 
-      // Update status to transcribing
+      console.log(`File uploaded: ${job.file.name}`);
       setJobs(prev => prev.map(j => 
         j.id === job.id ? { ...j, status: 'transcribing', progress: 100 } : j
       ));
@@ -92,6 +92,7 @@ export function FileUpload() {
         .from('audio')
         .getPublicUrl(`${folderId}/${job.file.name}`);
 
+      console.log(`Starting transcription for: ${job.file.name}`);
       // Call your transcription API here
       const response = await fetch('/api/transcribe', {
         method: 'POST',
@@ -114,6 +115,7 @@ export function FileUpload() {
 
       if (dbError) throw dbError;
 
+      console.log(`Transcription complete for: ${job.file.name}`);
       // Update job status to done
       setJobs(prev => prev.map(j => 
         j.id === job.id ? { ...j, status: 'done', transcription } : j
@@ -122,7 +124,7 @@ export function FileUpload() {
       toast.success(`${job.file.name} transcribed successfully`);
 
     } catch (error) {
-      console.error('Processing error:', error);
+      console.error(`Error processing ${job.file.name}:`, error);
       setJobs(prev => prev.map(j => 
         j.id === job.id ? { ...j, status: 'error' } : j
       ));

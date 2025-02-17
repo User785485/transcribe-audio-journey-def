@@ -1,12 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { toBlobURL } from '@ffmpeg/util';
+import { toBlobURL, fetchFile } from '@ffmpeg/util';
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Waveform, Volume2, FileAudio, Download } from "lucide-react";
+import { Activity, Volume2, FileAudio, Download } from "lucide-react";
 
 const ffmpeg = new FFmpeg();
 
@@ -22,13 +22,19 @@ export function AudioConverter() {
   const [isReady, setIsReady] = useState(false);
   const [jobs, setJobs] = useState<ConversionJob[]>([]);
 
+  useEffect(() => {
+    loadFFmpeg();
+  }, []);
+
   const loadFFmpeg = async () => {
     try {
+      console.log('Loading FFmpeg...');
       const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
       await ffmpeg.load({
         coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
         wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
       });
+      console.log('FFmpeg loaded successfully');
       setIsReady(true);
     } catch (error) {
       console.error('Failed to load FFmpeg:', error);
@@ -36,11 +42,8 @@ export function AudioConverter() {
     }
   };
 
-  useState(() => {
-    loadFFmpeg();
-  }, []);
-
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    console.log('Files dropped:', acceptedFiles);
     const newJobs = acceptedFiles.map(file => ({
       id: Math.random().toString(36).substring(7),
       filename: file.name,
@@ -55,6 +58,7 @@ export function AudioConverter() {
       const job = newJobs[i];
 
       try {
+        console.log(`Processing file: ${file.name}`);
         setJobs(prev => prev.map(j => 
           j.id === job.id ? { ...j, status: 'converting' } : j
         ));
@@ -63,8 +67,10 @@ export function AudioConverter() {
         const outputFileName = `${file.name.split('.')[0]}.mp3`;
 
         // Write the file to FFmpeg's file system
-        ffmpeg.writeFile(inputFileName, await file.arrayBuffer());
+        const fileData = await fetchFile(file);
+        await ffmpeg.writeFile(inputFileName, fileData);
 
+        console.log(`Converting ${inputFileName} to ${outputFileName}`);
         // Run the conversion
         await ffmpeg.exec([
           '-i', inputFileName,
@@ -78,6 +84,7 @@ export function AudioConverter() {
         const blob = new Blob([data], { type: 'audio/mp3' });
         const url = URL.createObjectURL(blob);
 
+        console.log(`Conversion complete for ${file.name}`);
         setJobs(prev => prev.map(j => 
           j.id === job.id ? { ...j, status: 'done', outputUrl: url, progress: 100 } : j
         ));
@@ -87,7 +94,7 @@ export function AudioConverter() {
         await ffmpeg.deleteFile(outputFileName);
 
       } catch (error) {
-        console.error('Conversion error:', error);
+        console.error(`Conversion error for ${file.name}:`, error);
         setJobs(prev => prev.map(j => 
           j.id === job.id ? { ...j, status: 'error', progress: 0 } : j
         ));
@@ -141,27 +148,27 @@ export function AudioConverter() {
               <div key={job.id} className="flex items-center gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <Waveform className="w-4 h-4 text-primary" />
+                    <Activity className="w-4 h-4 text-primary" />
                     <span className="font-medium">{job.filename}</span>
                   </div>
                   <Progress value={job.progress} className="h-2" />
-                </div>
-                <div className="flex items-center gap-2">
-                  {job.status === 'converting' && (
-                    <Volume2 className="w-5 h-5 text-primary animate-pulse" />
-                  )}
-                  {job.status === 'done' && job.outputUrl && (
-                    <Button
-                      size="sm"
-                      onClick={() => downloadFile(job.outputUrl!, job.filename)}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Download MP3
-                    </Button>
-                  )}
-                  {job.status === 'error' && (
-                    <span className="text-sm text-red-500">Conversion failed</span>
-                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    {job.status === 'converting' && (
+                      <span className="text-sm text-gray-500">Converting...</span>
+                    )}
+                    {job.status === 'done' && job.outputUrl && (
+                      <Button
+                        size="sm"
+                        onClick={() => downloadFile(job.outputUrl!, job.filename)}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download MP3
+                      </Button>
+                    )}
+                    {job.status === 'error' && (
+                      <span className="text-sm text-red-500">Conversion failed</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

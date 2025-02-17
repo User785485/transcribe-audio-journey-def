@@ -2,17 +2,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { Transcription } from "@/types/folder";
-import { File, MoreVertical } from "lucide-react";
+import { FileAudio, MoreVertical } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 interface Props {
-  files: Array<{
-    id: string;
-    filename: string;
-    content: string;
-    created_at: string;
-  }>;
+  files: Transcription[];
   onDelete: (fileId: string) => void;
 }
 
@@ -24,7 +19,7 @@ export function FolderContents({ files, onDelete }: Props) {
           key={file.id}
           className="flex items-center p-2 rounded-md hover:bg-accent"
         >
-          <File className="h-4 w-4 text-muted-foreground mr-2" />
+          <FileAudio className="h-4 w-4 text-muted-foreground mr-2" />
           <span className="text-sm flex-1">{file.filename}</span>
           <p className="text-sm text-gray-500 mb-4">
             Created: {format(new Date(file.created_at), "PPP")}
