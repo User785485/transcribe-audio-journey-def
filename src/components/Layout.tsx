@@ -55,7 +55,10 @@ export function Layout({ children }: LayoutProps) {
                 </Card>
 
                 <TabsContent value="transcribe" className="space-y-6">
-                  <FileUpload />
+                  <FileUpload 
+                    onFilesAccepted={addFiles}
+                    accept={{ 'audio/*': ['.mp3', '.wav', '.ogg', '.m4a'] }}
+                  />
                 </TabsContent>
 
                 <TabsContent value="convert" className="space-y-6">
